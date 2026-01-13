@@ -49,8 +49,5 @@ export const STATUS_COLORS: Record<string, string> = {
   CANCELLED: 'bg-red-100 text-red-800',
 };
 
-export const MOCK_COMPANIES = [
-  { id: 'comp_1', name: 'Multiplus Tech', plan: 'PRO', status: 'ACTIVE', revenue: 45200 },
-  { id: 'comp_2', name: 'FixIt Mobile', plan: 'ENTERPRISE', status: 'ACTIVE', revenue: 128000 },
-  { id: 'comp_3', name: 'Z-Eletrônicos', plan: 'FREE', status: 'TRIAL', revenue: 1500 },
-];
+// Limpo para produção
+export const MOCK_COMPANIES = [];
