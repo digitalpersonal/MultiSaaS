@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { ShieldCheck, Mail, Lock, LogIn, AlertCircle, Building2, Zap, MessageCircle, Eye, EyeOff } from 'lucide-react';
+import { ShieldCheck, Mail, Lock, LogIn, AlertCircle, Building2, Zap, MessageCircle, Eye, EyeOff, Crown } from 'lucide-react';
 import { UserRole } from '../types';
 
 interface LoginProps {
@@ -14,18 +14,22 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
+  // Verifica se o e-mail digitado é o do Master Admin para feedback visual
+  const isMasterEmail = email.trim().toLowerCase() === 'digitalpersonal@gmail.com';
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setIsLoading(true);
 
+    const normalizedEmail = email.trim().toLowerCase();
+
     setTimeout(() => {
-      // 1. Verificar Credenciais Fixas do Super Admin (Master)
-      // Reconhecendo o e-mail oficial master: digitalpersonal@gmail.com
-      if (email === 'digitalpersonal@gmail.com' && password === 'Mld3602#?+') {
+      // 1. CREDENCIAIS MASTER ADMIN (DONO DO SISTEMA)
+      if (normalizedEmail === 'digitalpersonal@gmail.com' && password === 'Mld3602#?+') {
         onLogin({
-          id: '936d5924-0115-47d4-9851-b245f1d2ac5d', // Seu UUID Master oficial
-          name: 'Super Admin Master',
+          id: '936d5924-0115-47d4-9851-b245f1d2ac5d', // Seu UUID Master Oficial
+          name: 'Silvio T. de Sá Filho',
           email: 'digitalpersonal@gmail.com',
           role: UserRole.SUPER_ADMIN,
           companyId: 'platform_core'
@@ -34,17 +38,19 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
         return;
       }
 
-      // 2. Verificar Credenciais Dinâmicas (Criadas pelo Super Admin)
+      // 2. CREDENCIAIS DE TENANTS (CLIENTES SAAS)
       const savedAccounts = JSON.parse(localStorage.getItem('multiplus_accounts') || '[]');
-      const foundAccount = savedAccounts.find((acc: any) => acc.email === email && acc.password === password);
+      const foundAccount = savedAccounts.find((acc: any) => 
+        acc.email.trim().toLowerCase() === normalizedEmail && acc.password === password
+      );
 
       if (foundAccount) {
         onLogin(foundAccount);
       } else {
-        setError('E-mail ou senha incorretos. Acesso restrito a administradores e operadores autorizados.');
+        setError('E-MAIL OU SENHA INCORRETOS. ACESSO RESTRITO A ADMINISTRADORES E OPERADORES AUTORIZADOS.');
       }
       setIsLoading(false);
-    }, 1000);
+    }, 800);
   };
 
   const handleContactSupport = () => {
@@ -67,20 +73,27 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
           
           <form className="space-y-8" onSubmit={handleSubmit}>
             {error && (
-              <div className="p-5 bg-rose-50 border border-rose-100 rounded-3xl text-rose-600 text-[11px] font-black flex items-center gap-4 animate-shake uppercase tracking-tight">
-                <AlertCircle size={20} className="shrink-0" /> {error}
+              <div className="p-5 bg-rose-50 border border-rose-100 rounded-3xl text-rose-600 text-[10px] font-black flex items-center gap-4 animate-shake uppercase tracking-tight leading-relaxed">
+                <AlertCircle size={24} className="shrink-0" /> {error}
               </div>
             )}
 
             <div>
-              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">E-mail Corporativo</label>
+              <div className="flex justify-between items-center mb-3 ml-1">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">E-mail Corporativo</label>
+                {isMasterEmail && (
+                  <span className="flex items-center gap-1.5 text-[9px] font-black text-indigo-600 uppercase tracking-widest animate-pulse">
+                    <Crown size={12} /> Master Admin
+                  </span>
+                )}
+              </div>
               <div className="relative">
-                <Mail className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
+                <Mail className={`absolute left-5 top-1/2 -translate-y-1/2 transition-colors ${isMasterEmail ? 'text-indigo-600' : 'text-slate-300'}`} size={20} />
                 <input 
                   type="email" 
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-14 pr-6 py-5 bg-slate-50 border-none rounded-3xl focus:ring-4 focus:ring-indigo-500/10 text-sm font-black outline-none transition-all" 
+                  className={`w-full pl-14 pr-6 py-5 bg-slate-50 border-none rounded-3xl focus:ring-4 focus:ring-indigo-500/10 text-sm font-black outline-none transition-all ${isMasterEmail ? 'bg-indigo-50/50' : ''}`} 
                   placeholder="seu@email.com"
                   required 
                 />
@@ -90,12 +103,12 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
             <div>
               <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">Senha de Acesso</label>
               <div className="relative">
-                <Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
+                <Lock className={`absolute left-5 top-1/2 -translate-y-1/2 transition-colors ${isMasterEmail ? 'text-indigo-600' : 'text-slate-300'}`} size={20} />
                 <input 
                   type={showPassword ? 'text' : 'password'} 
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-14 pr-14 py-5 bg-slate-50 border-none rounded-3xl focus:ring-4 focus:ring-indigo-500/10 text-sm font-black outline-none transition-all" 
+                  className={`w-full pl-14 pr-14 py-5 bg-slate-50 border-none rounded-3xl focus:ring-4 focus:ring-indigo-500/10 text-sm font-black outline-none transition-all ${isMasterEmail ? 'bg-indigo-50/50' : ''}`} 
                   placeholder="••••••••"
                   required 
                 />
@@ -113,13 +126,13 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
             <button 
               type="submit" 
               disabled={isLoading}
-              className="w-full py-6 bg-indigo-600 text-white rounded-[2rem] font-black shadow-2xl shadow-indigo-100 hover:bg-indigo-700 transition-all flex items-center justify-center gap-4 active:scale-[0.98] disabled:opacity-70 uppercase tracking-widest text-xs"
+              className={`w-full py-6 rounded-[2rem] font-black shadow-2xl transition-all flex items-center justify-center gap-4 active:scale-[0.98] disabled:opacity-70 uppercase tracking-widest text-xs ${isMasterEmail ? 'bg-slate-900 text-indigo-400 shadow-slate-200' : 'bg-indigo-600 text-white shadow-indigo-100 hover:bg-indigo-700'}`}
             >
               {isLoading ? (
                 <div className="w-6 h-6 border-3 border-white/30 border-t-white rounded-full animate-spin"></div>
               ) : (
                 <>
-                  <LogIn size={22} /> Acessar Unidade
+                  <LogIn size={22} /> {isMasterEmail ? 'Acessar Central Master' : 'Acessar Unidade'}
                 </>
               )}
             </button>

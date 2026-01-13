@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Menu, X, Bell, User, LogOut, ChevronRight, LayoutDashboard, Package, Wrench, DollarSign, ShieldCheck } from 'lucide-react';
 import { NAV_ITEMS, SUPER_ADMIN_NAV_ITEM } from '../constants';
@@ -14,9 +14,14 @@ interface LayoutProps {
 export const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const location = useLocation();
+  const mainRef = useRef<HTMLElement>(null);
 
+  // Efeito para rolar para o topo sempre que a rota mudar
   useEffect(() => {
     setIsSidebarOpen(false);
+    if (mainRef.current) {
+      mainRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   }, [location.pathname]);
 
   const isSuperAdmin = user.role === UserRole.SUPER_ADMIN;
@@ -138,7 +143,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-4 lg:p-8 pb-24 lg:pb-8 scroll-smooth">
+        <main ref={mainRef} className="flex-1 overflow-y-auto p-4 lg:p-8 pb-24 lg:pb-8 scroll-smooth">
           <div className="max-w-7xl mx-auto">{children}</div>
         </main>
 
