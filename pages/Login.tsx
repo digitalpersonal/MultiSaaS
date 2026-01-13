@@ -62,7 +62,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
   };
 
   const handleContactSupport = () => {
-    window.open('https://wa.me/5535991048020?text=Olá Multiplus! Meu acesso está bloqueado.', '_blank');
+    window.open('https://wa.me/5535991048020?text=Olá Silvio! Gostaria de falar sobre o sistema Multiplus.', '_blank');
   };
 
   return (
@@ -133,11 +133,16 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
           </form>
         </div>
 
-        <div className="mt-12 text-center">
-          <button onClick={handleContactSupport} className="inline-flex items-center gap-3 px-8 py-4 bg-white border border-slate-100 text-emerald-600 rounded-3xl text-xs font-black uppercase tracking-widest shadow-xl hover:bg-emerald-50 transition-all active:scale-95 group">
+        <div className="mt-12 text-center space-y-10">
+          <button onClick={handleContactSupport} className="inline-flex items-center gap-3 px-8 py-4 bg-emerald-600 text-white rounded-3xl text-xs font-black uppercase tracking-widest shadow-xl hover:bg-emerald-700 transition-all active:scale-95 group">
             <MessageCircle size={20} className="group-hover:animate-pulse" />
-            Suporte Multiplus
+            Falar com o desenvolvedor
           </button>
+          
+          <div className="pt-8 border-t border-slate-200/60">
+            <p className="text-[11px] font-black text-slate-700 uppercase tracking-widest whitespace-nowrap">Desenvolvido por Multiplus - Sistemas Inteligentes</p>
+            <p className="text-sm font-black text-slate-900 mt-2 uppercase tracking-[0.1em]">Silvio T. de Sá Filho</p>
+          </div>
         </div>
       </div>
     </div>

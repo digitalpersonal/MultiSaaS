@@ -119,6 +119,10 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
             <button onClick={onLogout} className="flex items-center w-full px-3 py-2 text-slate-500 hover:bg-red-50 hover:text-red-600 rounded-xl transition-colors text-sm font-semibold">
               <LogOut size={18} className="mr-3" /> Sair do Sistema
             </button>
+            <div className="mt-4 pt-4 border-t border-slate-100 text-center px-2 pb-4">
+               <p className="text-[9px] font-black text-slate-700 uppercase whitespace-nowrap overflow-hidden text-ellipsis">Desenvolvido por Multiplus - Sistemas Inteligentes</p>
+               <p className="text-[11px] font-black text-indigo-600 mt-1 uppercase tracking-wider">Silvio T. de Sá Filho</p>
+            </div>
           </div>
         </div>
       </aside>
@@ -144,7 +148,15 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
         </header>
 
         <main ref={mainRef} className="flex-1 overflow-y-auto p-4 lg:p-8 pb-24 lg:pb-8 scroll-smooth">
-          <div className="max-w-7xl mx-auto">{children}</div>
+          <div className="max-w-7xl mx-auto min-h-full flex flex-col">
+            <div className="flex-1">
+              {children}
+            </div>
+            <footer className="mt-16 pt-12 border-t border-slate-200 text-center pb-8">
+              <p className="text-[11px] font-black text-slate-700 uppercase tracking-widest whitespace-nowrap">Desenvolvido por Multiplus - Sistemas Inteligentes</p>
+              <p className="text-sm font-black text-slate-900 mt-2 uppercase tracking-[0.1em]">Silvio T. de Sá Filho</p>
+            </footer>
+          </div>
         </main>
 
         <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-lg border-t border-slate-200 px-6 py-3 flex justify-between items-center z-40 shadow-[0_-8px_30px_rgb(0,0,0,0.04)] pb-safe">
