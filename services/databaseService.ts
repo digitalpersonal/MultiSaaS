@@ -28,7 +28,13 @@ export const databaseService = {
       let query = supabase.from(table).select('*');
 
       if (companyId) {
-        query = query.eq('companyId', companyId);
+        if (table === 'tenants') {
+          // Para a tabela de tenants, o ID da linha é o próprio companyId
+          query = query.eq('id', companyId);
+        } else {
+          // Para outras tabelas (produtos, os, clientes, usuarios), filtra pela coluna companyId
+          query = query.eq('companyId', companyId);
+        }
       }
       
       const { data, error } = await query;
@@ -38,8 +44,15 @@ export const databaseService = {
     
     // Fallback para LocalStorage
     const localData = JSON.parse(localStorage.getItem(storageKey) || '[]');
-    // Se há companyId, filtra localmente também para consistência
-    return companyId ? localData.filter((item: T) => item.companyId === companyId) : localData;
+    
+    if (companyId) {
+      if (table === 'tenants') {
+         return localData.filter((item: T) => item.id === companyId);
+      }
+      return localData.filter((item: T) => item.companyId === companyId);
+    }
+    
+    return localData;
   },
 
   async save<T extends { id: string, companyId?: string }>(table: string, storageKey: string, data: T[]): Promise<void> {
@@ -47,7 +60,7 @@ export const databaseService = {
     let dataToSave = data;
 
     // Se é um usuário de empresa, garante que todos os itens tenham o companyId correto
-    // Exceto para tabelas globais (tenants e accounts) gerenciadas pelo SuperAdmin
+    // Exceto para tabelas globais (tenants e accounts) gerenciadas pelo SuperAdmin ou no cadastro
     if (companyId && table !== 'tenants' && table !== 'accounts') {
       dataToSave = data.map(item => ({ ...item, companyId: companyId }));
     }
@@ -56,28 +69,30 @@ export const databaseService = {
       const { error } = await supabase.from(table).upsert(dataToSave, { onConflict: 'id' });
       if (error) {
         console.error(`Erro ao sincronizar ${table} no Supabase:`, error);
-        // Se Supabase falhar, não atualiza localStorage para evitar dados inconsistentes
-        // e permite que o fetch continue usando dados possivelmente antigos do localStorage.
-        // Ou, em um cenário mais robusto, o erro seria propagado ou tratato com um alerta ao usuário.
         return; 
       }
     }
     
     // Atualiza o localStorage APÓS tentar o Supabase (ou se o Supabase não estiver habilitado).
-    // O localStorage passa a ser um cache direto do que foi salvo (ou do que seria salvo).
+    // O localStorage passa a ser um cache direto do que foi salvo.
     let currentGlobalLocalData: T[] = JSON.parse(localStorage.getItem(storageKey) || '[]');
+    
     if (companyId && table !== 'tenants' && table !== 'accounts') {
       // Remove os itens antigos desta empresa antes de adicionar os novos dadosToSave
       currentGlobalLocalData = currentGlobalLocalData.filter(item => item.companyId !== companyId);
       localStorage.setItem(storageKey, JSON.stringify([...currentGlobalLocalData, ...dataToSave]));
     } else {
-      // Para SuperAdmin ou tabelas globais (tenants, accounts), o localStorage é substituído pelos novos dados
+      // Para SuperAdmin ou tabelas globais, substitui ou atualiza de forma mais ampla.
+      // No caso de tenants/accounts sendo salvos pelo SuperAdmin, dataToSave é a lista completa ou o item novo.
+      // Se save() recebe a lista completa (comum neste app), apenas salvamos.
       localStorage.setItem(storageKey, JSON.stringify(dataToSave));
     }
   },
 
   async insertOne<T extends { id: string, companyId?: string }>(table: string, storageKey: string, item: T): Promise<void> {
     const companyId = getCurrentCompanyId();
+    
+    // Injeta companyId se necessário, exceto tenants/accounts que já devem vir corretos ou são globais
     if (companyId && table !== 'tenants' && table !== 'accounts') {
       item.companyId = companyId;
     }
@@ -87,20 +102,19 @@ export const databaseService = {
       const { error } = await supabase.from(table).insert(item);
       if (error) {
         console.error(`Erro ao inserir item no Supabase na tabela ${table}:`, error);
-        // Fallback para localStorage se Supabase falhar
       } else {
-        // Se Supabase teve sucesso, atualiza o localStorage para refletir o novo estado
-        const current = await databaseService.fetch<T>(table, storageKey); // Obtém o estado atual (agora incluindo o Supabase)
-        const updated = [item, ...current.filter(existingItem => existingItem.id !== item.id)]; // Adiciona o novo item, garantindo unicidade
-        await databaseService.save<T>(table, storageKey, updated); // Salva a lista atualizada no localStorage (e tentará Supabase novamente, mas upsert tratará)
+        // Se Supabase teve sucesso, atualiza o localStorage (cache)
+        const current = await databaseService.fetch<T>(table, storageKey);
+        
+        const updated = [item, ...current.filter(existingItem => existingItem.id !== item.id)];
+        await databaseService.save<T>(table, storageKey, updated);
         return;
       }
     }
     
-    // Fallback para localStorage (ou se Supabase falhou)
-    const current = JSON.parse(localStorage.getItem(storageKey) || '[]');
-    const updated = [item, ...current.filter((existingItem: T) => existingItem.id !== item.id)]; // Garante que não duplica no localStorage se já existia
-    // A lógica de filtragem por companyId para localStorage já está no save() abaixo
+    // Fallback LocalStorage
+    const current = await databaseService.fetch<T>(table, storageKey); // Pega o contexto atual
+    const updated = [item, ...current.filter((existingItem: T) => existingItem.id !== item.id)];
     await databaseService.save<T>(table, storageKey, updated);
   },
 
@@ -110,67 +124,71 @@ export const databaseService = {
     // Primeiro tenta atualizar no Supabase
     if (isCloudEnabled() && supabase) {
       let query = supabase.from(table).update(updates).eq('id', itemId);
-      if (companyId && table !== 'tenants' && table !== 'accounts') {
-        query = query.eq('companyId', companyId); // Garante que só atualiza itens da própria empresa
+      
+      // Filtros de segurança para update
+      if (companyId) {
+        if (table === 'tenants') {
+           query = query.eq('id', companyId); // Só pode atualizar a própria empresa
+        } else if (table !== 'accounts') {
+           query = query.eq('companyId', companyId); // Só pode atualizar seus itens
+        }
       }
+
       const { error } = await query;
       if (error) {
         console.error(`Erro ao atualizar item no Supabase na tabela ${table}:`, error);
-        // Fallback para localStorage se Supabase falhar
       } else {
-        // Se Supabase teve sucesso, atualiza o localStorage para refletir o novo estado
-        const current = await databaseService.fetch<T>(table, storageKey); // Obtém o estado atual (agora incluindo o Supabase)
+        const current = await databaseService.fetch<T>(table, storageKey);
         const updated = current.map(item => item.id === itemId ? { ...item, ...updates } : item);
-        await databaseService.save<T>(table, storageKey, updated); // Salva a lista atualizada no localStorage
+        await databaseService.save<T>(table, storageKey, updated);
         return;
       }
     }
 
-    // Fallback para localStorage (ou se Supabase falhou)
-    const current = JSON.parse(localStorage.getItem(storageKey) || '[]');
+    const current = await databaseService.fetch<T>(table, storageKey);
     const updated = current.map((item: T) => item.id === itemId ? { ...item, ...updates } : item);
-    // A lógica de filtragem por companyId para localStorage já está no save() abaixo
     await databaseService.save<T>(table, storageKey, updated);
   },
 
   async deleteOne<T extends { id: string, companyId?: string }>(table: string, storageKey: string, itemId: string): Promise<void> {
     const companyId = getCurrentCompanyId();
 
-    // Primeiro tenta deletar no Supabase
     if (isCloudEnabled() && supabase) {
       let query = supabase.from(table).delete().eq('id', itemId);
-      if (companyId && table !== 'tenants' && table !== 'accounts') {
-        query = query.eq('companyId', companyId); // Garante que só deleta itens da própria empresa
+      
+      if (companyId) {
+         if (table === 'tenants') {
+            query = query.eq('id', companyId); 
+         } else if (table !== 'accounts') {
+            query = query.eq('companyId', companyId);
+         }
       }
+
       const { error } = await query;
       if (error) {
         console.error(`Erro ao deletar item no Supabase na tabela ${table}:`, error);
-        // Fallback para localStorage se Supabase falhar
       } else {
-        // Se Supabase teve sucesso, atualiza o localStorage para refletir o novo estado
-        const current = await databaseService.fetch<T>(table, storageKey); // Obtém o estado atual (agora incluindo o Supabase)
+        const current = await databaseService.fetch<T>(table, storageKey);
         const updated = current.filter(item => item.id !== itemId);
-        await databaseService.save<T>(table, storageKey, updated); // Salva a lista atualizada no localStorage
+        await databaseService.save<T>(table, storageKey, updated);
         return;
       }
     }
 
-    // Fallback para localStorage (ou se Supabase falhou)
-    const current = JSON.parse(localStorage.getItem(storageKey) || '[]');
+    const current = await databaseService.fetch<T>(table, storageKey);
     const updated = current.filter((item: T) => item.id !== itemId);
-    // A lógica de filtragem por companyId para localStorage já está no save() abaixo
     await databaseService.save<T>(table, storageKey, updated);
   },
 
   async clearAll(tables: string[], storageKeys: string[]): Promise<void> {
     // Clear LocalStorage
     storageKeys.forEach(key => localStorage.removeItem(key));
-    localStorage.removeItem('multiplus_user'); // Limpar usuário logado também
+    localStorage.removeItem('multiplus_user');
 
     // Clear Supabase
     if (isCloudEnabled() && supabase) {
       for (const table of tables) {
-        const { error } = await supabase.from(table).delete().neq('id', 'NULL'); // Delete all records where id is not NULL (i.e., all records)
+        const { error } = await supabase.from(table).delete().neq('id', 'NULL');
         if (error) console.error(`Erro ao limpar a tabela Supabase ${table}:`, error);
       }
     }
