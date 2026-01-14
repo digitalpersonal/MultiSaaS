@@ -1,7 +1,7 @@
-
 import React, { useState } from 'react';
 import { ShieldCheck, Mail, Lock, LogIn, AlertCircle, Building2, Zap, MessageCircle, Eye, EyeOff, Crown, Ban } from 'lucide-react';
-import { UserRole, CompanyStatus } from '../types';
+import { UserRole, CompanyStatus, User as UserType, Company } from '../types';
+import { databaseService } from '../services/databaseService'; // Import databaseService
 
 interface LoginProps {
   onLogin: (user: any) => void;
@@ -16,14 +16,14 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
   const isMasterEmail = email.trim().toLowerCase() === 'digitalpersonal@gmail.com';
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setIsLoading(true);
 
     const normalizedEmail = email.trim().toLowerCase();
 
-    setTimeout(() => {
+    setTimeout(async () => { // Use setTimeout for async operations to simulate network latency
       // 1. MASTER ADMIN
       if (normalizedEmail === 'digitalpersonal@gmail.com' && password === 'Mld3602#?+') {
         onLogin({
@@ -38,24 +38,30 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
       }
 
       // 2. TENANTS
-      const savedAccounts = JSON.parse(localStorage.getItem('multiplus_accounts') || '[]');
-      const tenants = JSON.parse(localStorage.getItem('multiplus_tenants') || '[]');
-      const foundAccount = savedAccounts.find((acc: any) => 
-        acc.email.trim().toLowerCase() === normalizedEmail && acc.password === password
-      );
-
-      if (foundAccount) {
-        const company = tenants.find((t: any) => t.id === foundAccount.companyId);
+      try {
+        const savedAccounts = await databaseService.fetch<UserType>('accounts', 'multiplus_accounts');
+        const tenants = await databaseService.fetch<Company>('tenants', 'multiplus_tenants');
         
-        if (company && company.status === CompanyStatus.SUSPENDED) {
-          setError('ESTA UNIDADE ESTÁ SUSPENSA. ENTRE EM CONTATO COM O SUPORTE PARA REGULARIZAR.');
-          setIsLoading(false);
-          return;
-        }
+        const foundAccount = savedAccounts.find((acc: UserType) => 
+          acc.email.trim().toLowerCase() === normalizedEmail && acc.password === password
+        );
 
-        onLogin(foundAccount);
-      } else {
-        setError('E-MAIL OU SENHA INCORRETOS. ACESSO RESTRITO.');
+        if (foundAccount) {
+          const company = tenants.find((t: Company) => t.id === foundAccount.companyId);
+          
+          if (company && company.status === CompanyStatus.SUSPENDED) {
+            setError('ESTA UNIDADE ESTÁ SUSPENSA. ENTRE EM CONTATO COM O SUPORTE PARA REGULARIZAR.');
+            setIsLoading(false);
+            return;
+          }
+
+          onLogin(foundAccount);
+        } else {
+          setError('E-MAIL OU SENHA INCORRETOS. ACESSO RESTRITO.');
+        }
+      } catch (err) {
+        console.error("Erro ao buscar dados de login:", err);
+        setError('OCORREU UM ERRO AO TENTAR FAZER LOGIN. TENTE NOVAMENTE MAIS TARDE.');
       }
       setIsLoading(false);
     }, 800);

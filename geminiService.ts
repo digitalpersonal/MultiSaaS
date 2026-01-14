@@ -16,6 +16,7 @@ export const getBusinessInsights = async (data: any) => {
     return response.text || "Insights indisponíveis no momento.";
   } catch (error) {
     console.error("Erro ao gerar insights:", error);
-    return "Não foi possível gerar insights automáticos agora. Verifique seus relatórios manuais.";
+    // Mensagem de erro mais amigável para produção
+    return "Não foi possível gerar insights automáticos agora. Por favor, verifique seus relatórios manuais ou tente novamente mais tarde.";
   }
 };

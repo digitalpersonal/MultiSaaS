@@ -27,6 +27,9 @@ export interface Company {
   profileCompleted: boolean;
   pixType?: 'CPF' | 'CNPJ' | 'EMAIL' | 'PHONE' | 'RANDOM';
   pixKey?: string;
+  adminEmail?: string; // Temporário para SuperAdmin mockado
+  // Add 'address' property as it is used in Settings.tsx
+  address?: string; 
 }
 
 export interface User {
@@ -58,9 +61,10 @@ export interface OSChecklist {
 
 export interface ServiceOrder {
   id: string;
+  companyId: string; // Adicionado para multi-tenancy
   customerId: string;
   customerName: string;
-  phone: string;
+  phone?: string;
   device: string;
   defect: string;
   status: OSStatus;
@@ -83,6 +87,7 @@ export interface ProductVariation {
 
 export interface Product {
   id: string;
+  companyId: string; // Adicionado para multi-tenancy
   name: string;
   category: string;
   sku?: string;
@@ -100,22 +105,26 @@ export interface Product {
 
 export interface Customer {
   id: string;
+  companyId: string; // Adicionado para multi-tenancy
   name: string;
   taxId: string;
   email: string;
   phone: string;
   type: 'INDIVIDUAL' | 'BUSINESS';
+  status?: string; // Adicionado para mock do SuperAdmin
 }
 
 export interface Transaction {
   id: string;
+  companyId: string; // Adicionado para multi-tenancy
   type: 'INCOME' | 'EXPENSE';
   description: string;
   amount: number;
   date: string;
   status: 'PAID' | 'PENDING' | 'OVERDUE';
-  category: string;
+  category?: string;
   account?: string;
   method?: string;
   notes?: string;
+  desc?: string; // Adicionado para mock do Finance
 }

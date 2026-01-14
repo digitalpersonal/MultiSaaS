@@ -1,23 +1,50 @@
-
 import React, { useState, useEffect } from 'react';
 import { Building2, CreditCard, Save, QrCode, Key, MapPin, ImageIcon, UploadCloud, AlertTriangle, ChevronRight, Zap } from 'lucide-react';
+import { databaseService } from '../services/databaseService';
+import { Company as CompanyType, UserRole, User } from '../types';
 
 export const Settings: React.FC = () => {
+  const TENANTS_STORAGE_KEY = 'multiplus_tenants';
+  const TENANTS_TABLE_NAME = 'tenants';
+
   const [activeTab, setActiveTab] = useState('empresa');
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   
-  const [company, setCompany] = useState<any>(() => {
-    const user = JSON.parse(localStorage.getItem('multiplus_user') || '{}');
-    const tenants = JSON.parse(localStorage.getItem('multiplus_tenants') || '[]');
-    return tenants.find((t: any) => t.id === user.companyId) || {};
-  });
+  const [company, setCompany] = useState<CompanyType | null>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
 
-  const [companyName, setCompanyName] = useState(company.name || '');
-  const [taxId, setTaxId] = useState(company.taxId || '');
-  const [address, setAddress] = useState(company.address || '');
-  const [pixType, setPixType] = useState(company.pixType || 'CNPJ');
-  const [pixKey, setPixKey] = useState(company.pixKey || '');
-  const [logo, setLogo] = useState(company.logo || '');
+
+  const [companyName, setCompanyName] = useState('');
+  const [taxId, setTaxId] = useState('');
+  const [address, setAddress] = useState('');
+  const [pixType, setPixType] = useState('CNPJ');
+  const [pixKey, setPixKey] = useState('');
+  const [logo, setLogo] = useState('');
+
+  useEffect(() => {
+    const loadData = async () => {
+      setIsLoading(true);
+      const user = JSON.parse(localStorage.getItem('multiplus_user') || 'null');
+      setCurrentUser(user);
+
+      if (user && user.companyId && user.role !== UserRole.SUPER_ADMIN) {
+        const tenants = await databaseService.fetch<CompanyType>(TENANTS_TABLE_NAME, TENANTS_STORAGE_KEY);
+        const currentCompany = tenants.find((t: CompanyType) => t.id === user.companyId);
+        if (currentCompany) {
+          setCompany(currentCompany);
+          setCompanyName(currentCompany.name || '');
+          setTaxId(currentCompany.taxId || '');
+          setAddress(currentCompany.address || ''); // Assumindo que company tem address
+          setPixType(currentCompany.pixType || 'CNPJ');
+          setPixKey(currentCompany.pixKey || '');
+          setLogo(currentCompany.logo || '');
+        }
+      }
+      setIsLoading(false);
+    };
+    loadData();
+  }, []); // Dependência vazia, carrega uma vez ao montar
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -30,18 +57,49 @@ export const Settings: React.FC = () => {
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setIsSaving(true);
-    setTimeout(() => {
-      const updatedCompany = { ...company, name: companyName, taxId, address, pixType, pixKey, logo, profileCompleted: true };
-      const tenants = JSON.parse(localStorage.getItem('multiplus_tenants') || '[]');
-      const newTenants = tenants.map((t: any) => t.id === company.id ? updatedCompany : t);
-      localStorage.setItem('multiplus_tenants', JSON.stringify(newTenants));
-      setCompany(updatedCompany);
-      setIsSaving(false);
-      alert('DADOS ATUALIZADOS! Sua empresa está configurada para emissão de documentos.');
-    }, 800);
+    if (!company || !currentUser) return;
+
+    const updatedCompany: CompanyType = { 
+      ...company, 
+      name: companyName, 
+      taxId, 
+      address, // Salva o endereço
+      pixType, 
+      pixKey, 
+      logo, 
+      profileCompleted: true 
+    };
+    
+    // Atualiza apenas esta empresa específica no Supabase
+    await databaseService.updateOne<CompanyType>(TENANTS_TABLE_NAME, TENANTS_STORAGE_KEY, company.id, updatedCompany);
+
+    // Recarrega os dados para garantir que o estado local está atualizado
+    const updatedTenants = await databaseService.fetch<CompanyType>(TENANTS_TABLE_NAME, TENANTS_STORAGE_KEY);
+    const reloadedCompany = updatedTenants.find(t => t.id === company.id);
+    setCompany(reloadedCompany || null);
+
+    setIsSaving(false);
+    alert('DADOS ATUALIZADOS! Sua empresa está configurada para emissão de documentos.');
   };
+
+  if (isLoading) {
+    return (
+      <div className="py-20 text-center text-slate-400 animate-pulse font-bold uppercase tracking-widest">
+        Carregando Configurações...
+      </div>
+    );
+  }
+
+  if (!company) {
+    return (
+      <div className="py-20 text-center text-slate-500 font-bold uppercase tracking-widest">
+        Nenhuma empresa encontrada para configurar.
+      </div>
+    );
+  }
+
 
   return (
     <div className="space-y-8 max-w-5xl mx-auto pb-20">

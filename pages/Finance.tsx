@@ -1,14 +1,45 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { DollarSign, ArrowUpCircle, ArrowDownCircle, Plus, Search, X, TrendingUp, BarChart3, FileText, CheckCircle2 } from 'lucide-react';
+import { databaseService } from '../services/databaseService';
+import { Transaction as TransactionType, UserRole } from '../types';
 
 const currencyFormatter = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 // Exporting formatToBRL so it can be imported in SuperAdmin.tsx and other components
 export const formatToBRL = (value: number) => currencyFormatter.format(value);
 
 export const Finance: React.FC = () => {
-  const [transactions, setTransactions] = useState<any[]>(() => JSON.parse(localStorage.getItem('multiplus_finance') || '[]'));
-  useEffect(() => { localStorage.setItem('multiplus_finance', JSON.stringify(transactions)); }, [transactions]);
+  const FINANCE_STORAGE_KEY = 'multiplus_finance';
+  const FINANCE_TABLE_NAME = 'finance';
+
+  const [transactions, setTransactions] = useState<TransactionType[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const getCurrentCompanyId = (): string | undefined => {
+    const userString = localStorage.getItem('multiplus_user');
+    if (userString) {
+      const user = JSON.parse(userString);
+      if (user.role !== UserRole.SUPER_ADMIN) {
+        return user.companyId;
+      }
+    }
+    return undefined;
+  };
+  const companyId = getCurrentCompanyId();
+
+  useEffect(() => { 
+    const loadData = async () => {
+      setIsLoading(true);
+      const data = await databaseService.fetch<TransactionType>(FINANCE_TABLE_NAME, FINANCE_STORAGE_KEY);
+      setTransactions(data);
+      setIsLoading(false);
+    };
+    loadData();
+  }, [companyId]);
+
+  const syncTransactions = async (newData: TransactionType[]) => {
+    setTransactions(newData);
+    await databaseService.save(FINANCE_TABLE_NAME, FINANCE_STORAGE_KEY, newData);
+  };
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [trType, setTrType] = useState<'INCOME' | 'EXPENSE'>('EXPENSE');
@@ -21,13 +52,36 @@ export const Finance: React.FC = () => {
     return { income, expense, net: income - expense };
   }, [transactions]);
 
-  const handleAdd = (e: React.FormEvent) => {
+  const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!companyId) return;
+
     const cleanAmount = parseFloat(trAmount.replace(/\D/g, '')) / 100;
-    const newTr = { id: `TR-${Date.now()}`, desc: trDesc, amount: cleanAmount, type: trType, date: new Date().toISOString(), status: 'PAID' };
-    setTransactions([newTr, ...transactions]);
+    const newTr: TransactionType = { 
+      id: `TR-${Date.now()}`, 
+      companyId: companyId,
+      description: trDesc, // Usando 'description' como texto
+      amount: cleanAmount, 
+      type: trType, 
+      date: new Date().toISOString(), 
+      status: 'PAID' 
+    };
+    
+    await databaseService.insertOne<TransactionType>(FINANCE_TABLE_NAME, FINANCE_STORAGE_KEY, newTr);
+    
+    const updatedTransactions = await databaseService.fetch<TransactionType>(FINANCE_TABLE_NAME, FINANCE_STORAGE_KEY);
+    setTransactions(updatedTransactions);
+
     setIsModalOpen(false); setTrDesc(''); setTrAmount('');
   };
+
+  if (isLoading) {
+    return (
+      <div className="py-20 text-center text-slate-400 animate-pulse font-bold uppercase tracking-widest">
+        Carregando Finanças...
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
@@ -53,7 +107,7 @@ export const Finance: React.FC = () => {
               <thead><tr className="bg-slate-50/50 text-[9px] font-black uppercase tracking-widest text-slate-400 border-b border-slate-50"><th className="px-8 py-5">Descrição</th><th className="px-8 py-5 text-right">Valor</th></tr></thead>
               <tbody className="divide-y divide-slate-50">
                 {transactions.map(tr => (
-                  <tr key={tr.id} className="hover:bg-slate-50 transition-all"><td className="px-8 py-6"><p className="text-sm font-bold text-slate-900">{tr.desc}</p><span className="text-[9px] font-black uppercase text-slate-400">{new Date(tr.date).toLocaleDateString()}</span></td><td className={`px-8 py-6 text-right font-black text-sm ${tr.type === 'INCOME' ? 'text-emerald-600' : 'text-rose-600'}`}>{tr.type === 'INCOME' ? '+' : '-'} {formatToBRL(tr.amount)}</td></tr>
+                  <tr key={tr.id} className="hover:bg-slate-50 transition-all"><td className="px-8 py-6"><p className="text-sm font-bold text-slate-900">{tr.description}</p><span className="text-[9px] font-black uppercase text-slate-400">{new Date(tr.date).toLocaleDateString()}</span></td><td className={`px-8 py-6 text-right font-black text-sm ${tr.type === 'INCOME' ? 'text-emerald-600' : 'text-rose-600'}`}>{tr.type === 'INCOME' ? '+' : '-'} {formatToBRL(tr.amount)}</td></tr>
                 ))}
               </tbody>
            </table>

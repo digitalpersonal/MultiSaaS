@@ -1,26 +1,38 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
-  Search, Plus, Package, X, DollarSign, Edit2, Trash2, AlertCircle, TrendingUp, CheckCircle2, Printer, Info, Layers, Wrench, Clock, LayoutGrid, Zap, AlertTriangle
+  Search, Plus, Package, X, Edit2, Trash2, Zap
 } from 'lucide-react';
 import { ProductVariation } from '../types';
+import { databaseService } from '../services/databaseService';
 
 const currencyFormatter = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 export const formatToBRL = (value: number) => currencyFormatter.format(value);
 
 export const Inventory: React.FC = () => {
-  const [products, setProducts] = useState<any[]>(() => {
-    return JSON.parse(localStorage.getItem('multiplus_inventory') || '[]');
-  });
+  const STORAGE_KEY = 'multiplus_inventory';
+  const TABLE_NAME = 'inventory';
+  
+  const [products, setProducts] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    localStorage.setItem('multiplus_inventory', JSON.stringify(products));
-  }, [products]);
+    const loadData = async () => {
+      const data = await databaseService.fetch<any>(TABLE_NAME, STORAGE_KEY);
+      setProducts(data);
+      setIsLoading(false);
+    };
+    loadData();
+  }, []);
+
+  const syncProducts = async (newData: any[]) => {
+    setProducts(newData);
+    await databaseService.save(TABLE_NAME, STORAGE_KEY, newData);
+  };
 
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<any | null>(null);
-  const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<'ALL' | 'PRODUCTS' | 'SERVICES'>('ALL');
 
   const [name, setName] = useState('');
@@ -30,7 +42,6 @@ export const Inventory: React.FC = () => {
   const [minStock, setMinStock] = useState('5');
   const [costValue, setCostValue] = useState('');
   const [saleValue, setSaleValue] = useState('');
-  const [formError, setFormError] = useState<string | null>(null);
   const [itemType, setItemType] = useState<'PHYSICAL' | 'SERVICE'>('PHYSICAL');
   const [estimatedDuration, setEstimatedDuration] = useState('');
   const [hasVariations, setHasVariations] = useState(false);
@@ -46,11 +57,6 @@ export const Inventory: React.FC = () => {
     if (!formattedValue) return 0;
     return parseFloat(formattedValue.replace(/\./g, '').replace(',', '.'));
   };
-
-  const currentCost = useMemo(() => parseCurrencyToNumber(costValue), [costValue]);
-  const currentSale = useMemo(() => parseCurrencyToNumber(saleValue), [saleValue]);
-  const currentProfit = currentSale - currentCost;
-  const currentMargin = currentSale > 0 ? (currentProfit / currentSale) * 100 : 0;
 
   const handleOpenModal = (product?: any) => {
     if (product) {
@@ -70,20 +76,25 @@ export const Inventory: React.FC = () => {
       setEditingProduct(null); setName(''); setSku(''); setCategory('Geral'); setStock('0'); setMinStock('5');
       setCostValue(''); setSaleValue(''); setHasVariations(false); setVariations([]); setItemType('PHYSICAL'); setEstimatedDuration('');
     }
-    setFormError(null); setIsModalOpen(true); setActiveMenu(null);
+    setIsModalOpen(true);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const productData = {
       id: editingProduct ? editingProduct.id : Math.random().toString(36).substr(2, 9),
       name, sku, category, stock: itemType === 'PHYSICAL' ? parseInt(stock) : undefined,
       minStock: itemType === 'PHYSICAL' ? parseInt(minStock) : undefined,
-      costPrice: currentCost, salePrice: currentSale, active: true, hasVariations, type: itemType,
+      costPrice: parseCurrencyToNumber(costValue), salePrice: parseCurrencyToNumber(saleValue), 
+      active: true, hasVariations, type: itemType,
       variations: hasVariations ? variations : [], estimatedDuration
     };
-    if (editingProduct) setProducts(prev => prev.map(p => p.id === editingProduct.id ? productData : p));
-    else setProducts(prev => [productData, ...prev]);
+    
+    let nextData;
+    if (editingProduct) nextData = products.map(p => p.id === editingProduct.id ? productData : p);
+    else nextData = [productData, ...products];
+    
+    await syncProducts(nextData);
     setIsModalOpen(false);
   };
 
@@ -97,8 +108,8 @@ export const Inventory: React.FC = () => {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Estoque & Catálogo Profissional</h1>
-          <p className="text-slate-500 text-sm font-medium">Pronto para uso oficial.</p>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Estoque & Catálogo Cloud</h1>
+          <p className="text-slate-500 text-sm font-medium">Sincronizado com Supabase.</p>
         </div>
         <button onClick={() => handleOpenModal()} className="px-6 py-3 bg-indigo-600 text-white rounded-2xl font-black shadow-lg hover:bg-indigo-700 transition-all text-[10px] uppercase tracking-widest">
           <Plus size={18} className="mr-2 inline" /> Cadastrar Novo Item
@@ -117,11 +128,12 @@ export const Inventory: React.FC = () => {
         </div>
       </div>
 
-      {filteredProducts.length === 0 ? (
+      {isLoading ? (
+        <div className="py-20 text-center text-slate-400 animate-pulse font-bold uppercase tracking-widest">Carregando dados da nuvem...</div>
+      ) : filteredProducts.length === 0 ? (
         <div className="py-24 text-center bg-white rounded-[3rem] border border-slate-100">
            <Package size={64} className="mx-auto text-slate-100 mb-6" />
-           <h3 className="text-xl font-black text-slate-400 uppercase tracking-widest">Seu Catálogo está vazio</h3>
-           <p className="text-slate-400 mt-2 font-medium">Cadastre seu primeiro produto ou serviço para começar.</p>
+           <h3 className="text-xl font-black text-slate-400 uppercase tracking-widest">Nenhum item encontrado</h3>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -145,7 +157,7 @@ export const Inventory: React.FC = () => {
                  </div>
                  <div className="flex gap-2">
                     <button onClick={() => handleOpenModal(p)} className="p-2 text-slate-400 hover:text-indigo-600 transition-colors"><Edit2 size={16} /></button>
-                    <button onClick={() => { if(confirm('Excluir?')) setProducts(prev => prev.filter(x => x.id !== p.id)) }} className="p-2 text-slate-400 hover:text-rose-600 transition-colors"><Trash2 size={16} /></button>
+                    <button onClick={async () => { if(confirm('Excluir?')) await syncProducts(products.filter(x => x.id !== p.id)) }} className="p-2 text-slate-400 hover:text-rose-600 transition-colors"><Trash2 size={16} /></button>
                  </div>
               </div>
             </div>
@@ -164,20 +176,20 @@ export const Inventory: React.FC = () => {
              <form className="p-8 space-y-6" onSubmit={handleSubmit}>
                 <div className="flex gap-2 p-1.5 bg-slate-100 rounded-2xl">
                    <button type="button" onClick={() => setItemType('PHYSICAL')} className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase ${itemType === 'PHYSICAL' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}>Produto Físico</button>
-                   <button type="button" onClick={() => setItemType('SERVICE')} className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase ${itemType === 'SERVICE' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}>Serviço / Mão de Obra</button>
+                   <button type="button" onClick={() => setItemType('SERVICE')} className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase ${itemType === 'SERVICE' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}>Serviço</button>
                 </div>
                 <div className="space-y-4">
                    <input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none" placeholder="Nome do Item..." required />
                    <div className="grid grid-cols-2 gap-4">
-                      <input type="text" value={sku} onChange={e => setSku(e.target.value)} className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none" placeholder="SKU / Código" />
-                      <input type="text" value={itemType === 'PHYSICAL' ? stock : estimatedDuration} onChange={e => itemType === 'PHYSICAL' ? setStock(e.target.value) : setEstimatedDuration(e.target.value)} className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none" placeholder={itemType === 'PHYSICAL' ? 'Estoque' : 'Tempo (Ex: 1h)'} />
+                      <input type="text" value={sku} onChange={e => setSku(e.target.value)} className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none" placeholder="SKU" />
+                      <input type="text" value={itemType === 'PHYSICAL' ? stock : estimatedDuration} onChange={e => itemType === 'PHYSICAL' ? setStock(e.target.value) : setEstimatedDuration(e.target.value)} className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none" placeholder={itemType === 'PHYSICAL' ? 'Estoque' : 'Duração'} />
                    </div>
                    <div className="grid grid-cols-2 gap-4">
                       <input type="text" value={costValue} onChange={e => setCostValue(maskCurrencyInput(e.target.value))} className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none" placeholder="Custo R$" />
                       <input type="text" value={saleValue} onChange={e => setSaleValue(maskCurrencyInput(e.target.value))} className="w-full px-6 py-4 bg-indigo-50 border-none rounded-2xl text-sm font-black text-indigo-600 outline-none" placeholder="Venda R$" required />
                    </div>
                 </div>
-                <button type="submit" className="w-full py-5 bg-indigo-600 text-white rounded-[2rem] font-black shadow-xl hover:bg-indigo-700 transition-all uppercase tracking-widest text-xs">Confirmar Cadastro</button>
+                <button type="submit" className="w-full py-5 bg-indigo-600 text-white rounded-[2rem] font-black shadow-xl hover:bg-indigo-700 transition-all uppercase tracking-widest text-xs">Sincronizar Item</button>
              </form>
           </div>
         </div>

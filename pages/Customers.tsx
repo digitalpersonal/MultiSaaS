@@ -1,35 +1,97 @@
-
 import React, { useState, useEffect } from 'react';
 import { Search, Plus, User, Mail, Phone, Edit2, Trash2, X, MoreVertical, CheckCircle2, History, ArrowUpRight } from 'lucide-react';
+import { databaseService } from '../services/databaseService';
+import { Customer as CustomerType, UserRole } from '../types';
 
 export const Customers: React.FC = () => {
-  const [customers, setCustomers] = useState<any[]>(() => JSON.parse(localStorage.getItem('multiplus_customers') || '[]'));
-  useEffect(() => { localStorage.setItem('multiplus_customers', JSON.stringify(customers)); }, [customers]);
+  const CUSTOMER_STORAGE_KEY = 'multiplus_customers';
+  const CUSTOMER_TABLE_NAME = 'customers';
+
+  const [customers, setCustomers] = useState<CustomerType[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const getCurrentCompanyId = (): string | undefined => {
+    const userString = localStorage.getItem('multiplus_user');
+    if (userString) {
+      const user = JSON.parse(userString);
+      if (user.role !== UserRole.SUPER_ADMIN) {
+        return user.companyId;
+      }
+    }
+    return undefined;
+  };
+  const companyId = getCurrentCompanyId();
+
+  useEffect(() => { 
+    const loadData = async () => {
+      setIsLoading(true);
+      const data = await databaseService.fetch<CustomerType>(CUSTOMER_TABLE_NAME, CUSTOMER_STORAGE_KEY);
+      setCustomers(data);
+      setIsLoading(false);
+    };
+    loadData();
+  }, [companyId]);
+
+  const syncCustomers = async (newData: CustomerType[]) => {
+    setCustomers(newData);
+    await databaseService.save(CUSTOMER_TABLE_NAME, CUSTOMER_STORAGE_KEY, newData);
+  };
 
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingCustomer, setEditingCustomer] = useState<any | null>(null);
+  const [editingCustomer, setEditingCustomer] = useState<CustomerType | null>(null);
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [taxId, setTaxId] = useState('');
 
-  const handleOpenModal = (c?: any) => {
+  const handleOpenModal = (c?: CustomerType) => {
     if (c) { setEditingCustomer(c); setName(c.name); setEmail(c.email); setPhone(c.phone); setTaxId(c.taxId); }
     else { setEditingCustomer(null); setName(''); setEmail(''); setPhone(''); setTaxId(''); }
     setIsModalOpen(true);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const data = { id: editingCustomer ? editingCustomer.id : `CLI-${Date.now()}`, name, email, phone, taxId, status: 'Novo' };
-    if (editingCustomer) setCustomers(prev => prev.map(c => c.id === editingCustomer.id ? data : c));
-    else setCustomers(prev => [data, ...prev]);
+    if (!companyId) return; // Garante que há um companyId para associar o cliente
+
+    const customerData: CustomerType = { 
+      id: editingCustomer ? editingCustomer.id : `CLI-${Date.now()}`, 
+      companyId: companyId,
+      name, email, phone, taxId, 
+      type: 'INDIVIDUAL', // Default para pessoa física
+      status: 'Novo' // Default status
+    };
+
+    if (editingCustomer) {
+      await databaseService.updateOne<CustomerType>(CUSTOMER_TABLE_NAME, CUSTOMER_STORAGE_KEY, customerData.id, customerData);
+    } else {
+      await databaseService.insertOne<CustomerType>(CUSTOMER_TABLE_NAME, CUSTOMER_STORAGE_KEY, customerData);
+    }
+    
+    const updatedCustomers = await databaseService.fetch<CustomerType>(CUSTOMER_TABLE_NAME, CUSTOMER_STORAGE_KEY);
+    setCustomers(updatedCustomers);
     setIsModalOpen(false);
   };
 
+  const handleDeleteCustomer = async (id: string) => {
+    if (confirm('Tem certeza que deseja excluir este cliente?')) {
+      await databaseService.deleteOne<CustomerType>(CUSTOMER_TABLE_NAME, CUSTOMER_STORAGE_KEY, id);
+      const updatedCustomers = await databaseService.fetch<CustomerType>(CUSTOMER_TABLE_NAME, CUSTOMER_STORAGE_KEY);
+      setCustomers(updatedCustomers);
+    }
+  };
+
   const filtered = customers.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase()));
+
+  if (isLoading) {
+    return (
+      <div className="py-20 text-center text-slate-400 animate-pulse font-bold uppercase tracking-widest">
+        Carregando Clientes...
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -59,7 +121,7 @@ export const Customers: React.FC = () => {
               </div>
               <div className="flex justify-between items-center pt-6 border-t border-slate-50">
                  <button onClick={() => handleOpenModal(c)} className="text-[10px] font-black text-indigo-600 uppercase tracking-widest hover:underline">Editar Perfil</button>
-                 <button onClick={() => setCustomers(prev => prev.filter(x => x.id !== c.id))} className="text-rose-400 hover:text-rose-600 transition-colors"><Trash2 size={16} /></button>
+                 <button onClick={() => handleDeleteCustomer(c.id)} className="text-rose-400 hover:text-rose-600 transition-colors"><Trash2 size={16} /></button>
               </div>
             </div>
           ))}

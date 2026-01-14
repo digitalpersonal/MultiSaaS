@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { 
   Building2, 
@@ -22,19 +21,23 @@ import {
   Trash2
 } from 'lucide-react';
 import { formatToBRL } from './Finance';
-import { UserRole, CompanyStatus } from '../types';
+import { UserRole, CompanyStatus, Company as CompanyType, User as UserType } from '../types';
+import { databaseService } from '../services/databaseService';
 
 const FIXED_PLAN_PRICE = 149.90;
-const SYSTEM_URL = 'https://multiplus-saas.vercel.app';
+const SYSTEM_URL = 'https://multiplus-saas.vercel.app'; // Atualize se a URL for diferente
 
 export const SuperAdmin: React.FC = () => {
-  const [companies, setCompanies] = useState(() => {
-    const saved = localStorage.getItem('multiplus_tenants');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const TENANTS_STORAGE_KEY = 'multiplus_tenants';
+  const TENANTS_TABLE_NAME = 'tenants';
+  const ACCOUNTS_STORAGE_KEY = 'multiplus_accounts';
+  const ACCOUNTS_TABLE_NAME = 'accounts';
+
+  const [companies, setCompanies] = useState<CompanyType[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Form States
   const [companyName, setCompanyName] = useState('');
@@ -42,36 +45,46 @@ export const SuperAdmin: React.FC = () => {
   const [adminPassword, setAdminPassword] = useState('');
 
   useEffect(() => {
-    localStorage.setItem('multiplus_tenants', JSON.stringify(companies));
-  }, [companies]);
+    const loadData = async () => {
+      setIsLoading(true);
+      const loadedCompanies = await databaseService.fetch<CompanyType>(TENANTS_TABLE_NAME, TENANTS_STORAGE_KEY);
+      setCompanies(loadedCompanies);
+      setIsLoading(false);
+    };
+    loadData();
+  }, []);
 
-  const handleRegisterCompany = (e: React.FormEvent) => {
+  const handleRegisterCompany = async (e: React.FormEvent) => {
     e.preventDefault();
     const tenantId = `comp_${Math.random().toString(36).substr(2, 9)}`;
     
-    const newCompany = {
+    const newCompany: CompanyType = {
       id: tenantId,
       name: companyName,
       plan: 'PRO',
       status: CompanyStatus.ACTIVE,
-      revenue: 0,
       profileCompleted: false,
-      adminEmail: adminEmail 
+      currency: 'BRL', // Default
+      taxRate: 0, // Default
+      serviceFeeRate: 0, // Default
+      adminEmail: adminEmail // Salva para referência fácil
     };
 
-    const newUser = {
+    const newUser: UserType = {
       id: `user_${Math.random().toString(36).substr(2, 9)}`,
       companyId: tenantId,
       name: `Empresário ${companyName}`,
       email: adminEmail,
-      password: adminPassword,
+      password: adminPassword, // Em um sistema real, isso seria hashed e gerenciado pelo Auth
       role: UserRole.COMPANY_ADMIN
     };
 
-    const savedAccounts = JSON.parse(localStorage.getItem('multiplus_accounts') || '[]');
-    localStorage.setItem('multiplus_accounts', JSON.stringify([...savedAccounts, newUser]));
+    await databaseService.insertOne<CompanyType>(TENANTS_TABLE_NAME, TENANTS_STORAGE_KEY, newCompany);
+    await databaseService.insertOne<UserType>(ACCOUNTS_TABLE_NAME, ACCOUNTS_STORAGE_KEY, newUser);
 
-    setCompanies([newCompany, ...companies]);
+    const updatedCompanies = await databaseService.fetch<CompanyType>(TENANTS_TABLE_NAME, TENANTS_STORAGE_KEY);
+    setCompanies(updatedCompanies);
+
     setIsModalOpen(false);
     
     setCompanyName('');
@@ -81,19 +94,20 @@ export const SuperAdmin: React.FC = () => {
     alert(`AMBIENTE PROVISIONADO!\nUnidade: ${companyName}\nAcesso: ${adminEmail}`);
   };
 
-  const toggleCompanyStatus = (id: string) => {
-    setCompanies(prev => prev.map(c => {
-      if (c.id === id) {
-        const newStatus = c.status === CompanyStatus.SUSPENDED ? CompanyStatus.ACTIVE : CompanyStatus.SUSPENDED;
-        return { ...c, status: newStatus };
-      }
-      return c;
-    }));
+  const toggleCompanyStatus = async (id: string) => {
+    const companyToUpdate = companies.find(c => c.id === id);
+    if (!companyToUpdate) return;
+
+    const newStatus = companyToUpdate.status === CompanyStatus.SUSPENDED ? CompanyStatus.ACTIVE : CompanyStatus.SUSPENDED;
+    await databaseService.updateOne<CompanyType>(TENANTS_TABLE_NAME, TENANTS_STORAGE_KEY, id, { status: newStatus });
+    
+    const updatedCompanies = await databaseService.fetch<CompanyType>(TENANTS_TABLE_NAME, TENANTS_STORAGE_KEY);
+    setCompanies(updatedCompanies);
     setActiveMenu(null);
   };
 
-  const handleLoginAs = (company: any) => {
-    const savedAccounts = JSON.parse(localStorage.getItem('multiplus_accounts') || '[]');
+  const handleLoginAs = async (company: CompanyType) => {
+    const savedAccounts = await databaseService.fetch<UserType>(ACCOUNTS_TABLE_NAME, ACCOUNTS_STORAGE_KEY);
     const adminUser = savedAccounts.find(u => u.companyId === company.id && u.role === UserRole.COMPANY_ADMIN);
     
     if (adminUser) {
@@ -104,8 +118,8 @@ export const SuperAdmin: React.FC = () => {
     }
   };
 
-  const handleSendCredentials = (company: any) => {
-    const savedAccounts = JSON.parse(localStorage.getItem('multiplus_accounts') || '[]');
+  const handleSendCredentials = async (company: CompanyType) => {
+    const savedAccounts = await databaseService.fetch<UserType>(ACCOUNTS_TABLE_NAME, ACCOUNTS_STORAGE_KEY);
     const user = savedAccounts.find(u => u.companyId === company.id && u.role === UserRole.COMPANY_ADMIN);
     
     if (user) {
@@ -116,9 +130,10 @@ export const SuperAdmin: React.FC = () => {
     setActiveMenu(null);
   };
 
-  const handleResetSystem = () => {
+  const handleResetSystem = async () => {
     if (confirm('ATENÇÃO: Isso apagará TODAS as empresas, usuários, estoque e financeiro permanentemente. Deseja continuar?')) {
-      const keysToRemove = [
+      const tablesToClear = ['tenants', 'accounts', 'inventory', 'os', 'finance', 'customers'];
+      const storageKeysToClear = [
         'multiplus_tenants', 
         'multiplus_accounts', 
         'multiplus_inventory', 
@@ -126,16 +141,24 @@ export const SuperAdmin: React.FC = () => {
         'multiplus_finance', 
         'multiplus_customers'
       ];
-      keysToRemove.forEach(key => localStorage.removeItem(key));
+      await databaseService.clearAll(tablesToClear, storageKeysToClear);
       setCompanies([]);
       alert('Sistema resetado com sucesso.');
       window.location.reload();
     }
   };
 
-  const filteredCompanies = companies.filter((c: any) => 
+  const filteredCompanies = companies.filter((c: CompanyType) => 
     c.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  if (isLoading) {
+    return (
+      <div className="py-20 text-center text-slate-400 animate-pulse font-bold uppercase tracking-widest">
+        Carregando Unidades SaaS...
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
@@ -168,7 +191,7 @@ export const SuperAdmin: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Unidades Ativas</p>
-           <p className="text-4xl font-black text-slate-900">{companies.filter(c => c.status === 'ACTIVE').length}</p>
+           <p className="text-4xl font-black text-slate-900">{companies.filter(c => c.status === CompanyStatus.ACTIVE).length}</p>
         </div>
         <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Faturamento Estimado</p>
@@ -203,15 +226,15 @@ export const SuperAdmin: React.FC = () => {
             <tbody className="divide-y divide-slate-50">
               {filteredCompanies.length === 0 ? (
                 <tr><td colSpan={4} className="p-20 text-center text-slate-300 font-black uppercase tracking-[0.3em]">Nenhuma empresa cadastrada</td></tr>
-              ) : filteredCompanies.map((c: any) => (
+              ) : filteredCompanies.map((c: CompanyType) => (
                 <tr key={c.id} className="hover:bg-slate-50 group">
                   <td className="px-8 py-6">
                     <div className="flex items-center">
-                      <div className={`w-12 h-12 ${c.status === 'SUSPENDED' ? 'bg-slate-200 grayscale' : 'bg-indigo-50 text-indigo-600'} rounded-2xl flex items-center justify-center mr-4 font-black`}>
+                      <div className={`w-12 h-12 ${c.status === CompanyStatus.SUSPENDED ? 'bg-slate-200 grayscale' : 'bg-indigo-50 text-indigo-600'} rounded-2xl flex items-center justify-center mr-4 font-black`}>
                         {c.name.charAt(0)}
                       </div>
                       <div>
-                        <p className={`text-sm font-black ${c.status === 'SUSPENDED' ? 'text-slate-400 line-through' : 'text-slate-900'}`}>{c.name}</p>
+                        <p className={`text-sm font-black ${c.status === CompanyStatus.SUSPENDED ? 'text-slate-400 line-through' : 'text-slate-900'}`}>{c.name}</p>
                         <p className="text-[9px] font-bold text-slate-400 uppercase">{c.adminEmail}</p>
                       </div>
                     </div>
@@ -225,9 +248,9 @@ export const SuperAdmin: React.FC = () => {
                   </td>
                   <td className="px-8 py-6 text-right">
                     <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase ${
-                      c.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                      c.status === CompanyStatus.ACTIVE ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
                     }`}>
-                      {c.status === 'ACTIVE' ? 'Ativo' : 'Suspenso'}
+                      {c.status === CompanyStatus.ACTIVE ? 'Ativo' : 'Suspenso'}
                     </span>
                   </td>
                   <td className="px-8 py-6 text-right relative">
@@ -237,8 +260,8 @@ export const SuperAdmin: React.FC = () => {
                         <button onClick={() => handleLoginAs(c)} className="w-full flex items-center px-6 py-3 text-xs text-indigo-600 font-black hover:bg-indigo-50 transition-all uppercase tracking-widest"><ArrowUpRight size={14} className="mr-3" /> Dashboard</button>
                         <button onClick={() => handleSendCredentials(c)} className="w-full flex items-center px-6 py-3 text-xs text-emerald-600 font-black hover:bg-emerald-50 transition-all uppercase tracking-widest"><MessageCircle size={14} className="mr-3" /> Enviar Acesso</button>
                         <div className="h-px bg-slate-50 my-2 mx-4"></div>
-                        <button onClick={() => toggleCompanyStatus(c.id)} className={`w-full flex items-center px-6 py-3 text-xs font-black hover:bg-rose-50 transition-all uppercase tracking-widest ${c.status === 'ACTIVE' ? 'text-rose-600' : 'text-emerald-600'}`}>
-                          {c.status === 'ACTIVE' ? <><Ban size={14} className="mr-3" /> Bloquear</> : <><UserCheck size={14} className="mr-3" /> Desbloquear</>}
+                        <button onClick={() => toggleCompanyStatus(c.id)} className={`w-full flex items-center px-6 py-3 text-xs font-black hover:bg-rose-50 transition-all uppercase tracking-widest ${c.status === CompanyStatus.ACTIVE ? 'text-rose-600' : 'text-emerald-600'}`}>
+                          {c.status === CompanyStatus.ACTIVE ? <><Ban size={14} className="mr-3" /> Bloquear</> : <><UserCheck size={14} className="mr-3" /> Desbloquear</>}
                         </button>
                       </div>
                     )}
