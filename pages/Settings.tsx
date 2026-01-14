@@ -1,12 +1,14 @@
 
 import React, { useState, useEffect } from 'react';
-import { Building2, CreditCard, Save, QrCode, Key, MapPin, ImageIcon, UploadCloud, AlertTriangle, ChevronRight, Zap, Phone } from 'lucide-react';
+import { Building2, CreditCard, Save, QrCode, Key, MapPin, ImageIcon, UploadCloud, AlertTriangle, ChevronRight, Zap, Phone, Lock, CheckCircle2 } from 'lucide-react';
 import { databaseService } from '../services/databaseService';
 import { Company as CompanyType, UserRole, User } from '../types';
 
 export const Settings: React.FC = () => {
   const TENANTS_STORAGE_KEY = 'multiplus_tenants';
   const TENANTS_TABLE_NAME = 'tenants';
+  const ACCOUNTS_STORAGE_KEY = 'multiplus_accounts';
+  const ACCOUNTS_TABLE_NAME = 'accounts';
 
   const [activeTab, setActiveTab] = useState('empresa');
   const [isSaving, setIsSaving] = useState(false);
@@ -15,7 +17,7 @@ export const Settings: React.FC = () => {
   const [company, setCompany] = useState<CompanyType | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
-
+  // States para Empresa
   const [companyName, setCompanyName] = useState('');
   const [taxId, setTaxId] = useState('');
   const [address, setAddress] = useState('');
@@ -23,6 +25,10 @@ export const Settings: React.FC = () => {
   const [pixType, setPixType] = useState('CNPJ');
   const [pixKey, setPixKey] = useState('');
   const [logo, setLogo] = useState('');
+
+  // States para Senha
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
 
   useEffect(() => {
     const loadData = async () => {
@@ -60,7 +66,7 @@ export const Settings: React.FC = () => {
     }
   };
 
-  const handleSave = async () => {
+  const handleSaveCompanyData = async () => {
     setIsSaving(true);
     if (!company || !currentUser) return;
 
@@ -88,6 +94,38 @@ export const Settings: React.FC = () => {
     alert('DADOS ATUALIZADOS! Sua empresa está configurada para emissão de documentos.');
   };
 
+  const handlePasswordUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUser) return;
+
+    if (newPassword.length < 6) {
+      alert('A nova senha deve ter pelo menos 6 caracteres.');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      alert('As senhas não conferem.');
+      return;
+    }
+
+    setIsSaving(true);
+
+    // Atualiza a senha na tabela de contas
+    await databaseService.updateOne<User>(ACCOUNTS_TABLE_NAME, ACCOUNTS_STORAGE_KEY, currentUser.id, {
+      password: newPassword
+    });
+
+    // Atualiza o usuário na sessão local
+    const updatedUser = { ...currentUser, password: newPassword };
+    localStorage.setItem('multiplus_user', JSON.stringify(updatedUser));
+    setCurrentUser(updatedUser);
+
+    setNewPassword('');
+    setConfirmPassword('');
+    setIsSaving(false);
+    alert('SENHA ALTERADA COM SUCESSO! Utilize sua nova credencial no próximo login.');
+  };
+
   if (isLoading) {
     return (
       <div className="py-20 text-center text-slate-400 animate-pulse font-bold uppercase tracking-widest">
@@ -112,9 +150,11 @@ export const Settings: React.FC = () => {
           <h1 className="text-3xl font-black text-slate-900 tracking-tight">Identidade & Configurações</h1>
           <p className="text-slate-500 text-sm font-medium">Personalize sua unidade para uso oficial.</p>
         </div>
-        <button onClick={handleSave} disabled={isSaving} className="px-8 py-4 bg-indigo-600 text-white rounded-[1.5rem] font-black shadow-xl hover:bg-indigo-700 transition-all uppercase tracking-widest text-[10px] disabled:opacity-50">
-          {isSaving ? 'Salvando...' : 'Salvar Tudo'}
-        </button>
+        {activeTab !== 'security' && (
+          <button onClick={handleSaveCompanyData} disabled={isSaving} className="px-8 py-4 bg-indigo-600 text-white rounded-[1.5rem] font-black shadow-xl hover:bg-indigo-700 transition-all uppercase tracking-widest text-[10px] disabled:opacity-50">
+            {isSaving ? 'Salvando...' : 'Salvar Tudo'}
+          </button>
+        )}
       </div>
 
       <div className="flex flex-col lg:flex-row gap-8">
@@ -124,6 +164,10 @@ export const Settings: React.FC = () => {
           </button>
           <button onClick={() => setActiveTab('pix')} className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${activeTab === 'pix' ? 'bg-white text-indigo-600 shadow-md' : 'text-slate-400 hover:bg-white'}`}>
             <QrCode size={18} /> Cobrança Pix
+          </button>
+          <div className="h-px bg-slate-200 mx-4 my-2"></div>
+          <button onClick={() => setActiveTab('security')} className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${activeTab === 'security' ? 'bg-white text-rose-600 shadow-md' : 'text-slate-400 hover:bg-white'}`}>
+            <Lock size={18} /> Segurança
           </button>
         </aside>
 
@@ -190,6 +234,52 @@ export const Settings: React.FC = () => {
                     <input type="text" value={pixKey} onChange={e => setPixKey(e.target.value)} className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none" placeholder="Sua chave aqui..." />
                   </div>
                </div>
+            </div>
+          )}
+
+          {activeTab === 'security' && (
+            <div className="space-y-8 animate-in fade-in duration-500">
+               <div className="flex items-center gap-6">
+                  <div className="p-4 bg-rose-50 text-rose-600 rounded-[1.5rem]">
+                     <Lock size={32} />
+                  </div>
+                  <div>
+                     <h3 className="text-xl font-black text-slate-900">Credenciais de Acesso</h3>
+                     <p className="text-sm text-slate-500 font-medium">Gerencie a senha de administrador da sua conta. Mantenha-a segura.</p>
+                  </div>
+               </div>
+               
+               <form onSubmit={handlePasswordUpdate} className="max-w-md space-y-6">
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Nova Senha</label>
+                    <input 
+                      type="password" 
+                      value={newPassword} 
+                      onChange={e => setNewPassword(e.target.value)} 
+                      className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none focus:ring-4 focus:ring-rose-100 transition-all" 
+                      placeholder="••••••••"
+                      required 
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Confirmar Nova Senha</label>
+                    <input 
+                      type="password" 
+                      value={confirmPassword} 
+                      onChange={e => setConfirmPassword(e.target.value)} 
+                      className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none focus:ring-4 focus:ring-rose-100 transition-all" 
+                      placeholder="••••••••"
+                      required 
+                    />
+                  </div>
+
+                  <div className="pt-4">
+                    <button type="submit" disabled={isSaving} className="w-full py-5 bg-rose-600 text-white rounded-[2rem] font-black uppercase tracking-widest text-xs shadow-xl hover:bg-rose-700 transition-all flex items-center justify-center gap-2">
+                      {isSaving ? 'Atualizando...' : <><CheckCircle2 size={18} /> Atualizar Senha</>}
+                    </button>
+                    <p className="text-center text-[10px] text-slate-400 font-bold mt-4 uppercase">Esta ação não pode ser desfeita.</p>
+                  </div>
+               </form>
             </div>
           )}
         </main>

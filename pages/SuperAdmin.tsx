@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { 
   Building2, 
@@ -18,14 +19,16 @@ import {
   MessageCircle,
   Ban,
   RefreshCcw,
-  Trash2
+  Trash2,
+  Key,
+  DollarSign
 } from 'lucide-react';
 import { formatToBRL } from './Finance';
 import { UserRole, CompanyStatus, Company as CompanyType, User as UserType } from '../types';
 import { databaseService } from '../services/databaseService';
 
 const FIXED_PLAN_PRICE = 149.90;
-const SYSTEM_URL = 'https://multiplus-saas.vercel.app'; // Atualize se a URL for diferente
+const SYSTEM_URL = 'https://multiplus-saas.vercel.app'; 
 
 export const SuperAdmin: React.FC = () => {
   const TENANTS_STORAGE_KEY = 'multiplus_tenants';
@@ -39,10 +42,16 @@ export const SuperAdmin: React.FC = () => {
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Form States
+  // Form States para Nova Empresa
   const [companyName, setCompanyName] = useState('');
   const [adminEmail, setAdminEmail] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
+
+  // States para Alteração de Senha
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [selectedCompanyForPassword, setSelectedCompanyForPassword] = useState<CompanyType | null>(null);
+  const [newResetPassword, setNewResetPassword] = useState('');
+  const [confirmResetPassword, setConfirmResetPassword] = useState('');
 
   useEffect(() => {
     const loadData = async () => {
@@ -64,10 +73,10 @@ export const SuperAdmin: React.FC = () => {
       plan: 'PRO',
       status: CompanyStatus.ACTIVE,
       profileCompleted: false,
-      currency: 'BRL', // Default
-      taxRate: 0, // Default
-      serviceFeeRate: 0, // Default
-      adminEmail: adminEmail // Salva para referência fácil
+      currency: 'BRL', 
+      taxRate: 0, 
+      serviceFeeRate: 0, 
+      adminEmail: adminEmail 
     };
 
     const newUser: UserType = {
@@ -75,7 +84,7 @@ export const SuperAdmin: React.FC = () => {
       companyId: tenantId,
       name: `Empresário ${companyName}`,
       email: adminEmail,
-      password: adminPassword, // Em um sistema real, isso seria hashed e gerenciado pelo Auth
+      password: adminPassword,
       role: UserRole.COMPANY_ADMIN
     };
 
@@ -98,7 +107,16 @@ export const SuperAdmin: React.FC = () => {
     const companyToUpdate = companies.find(c => c.id === id);
     if (!companyToUpdate) return;
 
-    const newStatus = companyToUpdate.status === CompanyStatus.SUSPENDED ? CompanyStatus.ACTIVE : CompanyStatus.SUSPENDED;
+    const isBlocking = companyToUpdate.status === CompanyStatus.ACTIVE;
+
+    // Confirmação explícita sobre pagamento
+    const confirmMessage = isBlocking 
+      ? `ATENÇÃO: SUSPENDER ACESSO\n\nMotivo: Inadimplência ou Bloqueio Administrativo.\n\nDeseja realmente BLOQUEAR o acesso da empresa "${companyToUpdate.name}"? Ninguém desta unidade conseguirá fazer login.`
+      : `LIBERAR ACESSO\n\nDeseja reativar o acesso da empresa "${companyToUpdate.name}"?`;
+
+    if (!confirm(confirmMessage)) return;
+
+    const newStatus = isBlocking ? CompanyStatus.SUSPENDED : CompanyStatus.ACTIVE;
     await databaseService.updateOne<CompanyType>(TENANTS_TABLE_NAME, TENANTS_STORAGE_KEY, id, { status: newStatus });
     
     const updatedCompanies = await databaseService.fetch<CompanyType>(TENANTS_TABLE_NAME, TENANTS_STORAGE_KEY);
@@ -128,6 +146,41 @@ export const SuperAdmin: React.FC = () => {
       window.open(url, '_blank');
     }
     setActiveMenu(null);
+  };
+
+  const openPasswordModal = (company: CompanyType) => {
+    setSelectedCompanyForPassword(company);
+    setNewResetPassword('');
+    setConfirmResetPassword('');
+    setIsPasswordModalOpen(true);
+    setActiveMenu(null);
+  };
+
+  const handleUpdatePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedCompanyForPassword) return;
+
+    if (newResetPassword.length < 6) {
+      alert('A senha deve ter no mínimo 6 caracteres.');
+      return;
+    }
+    if (newResetPassword !== confirmResetPassword) {
+      alert('As senhas não conferem.');
+      return;
+    }
+
+    const allUsers = await databaseService.fetch<UserType>(ACCOUNTS_TABLE_NAME, ACCOUNTS_STORAGE_KEY);
+    const adminUser = allUsers.find(u => u.companyId === selectedCompanyForPassword.id && u.role === UserRole.COMPANY_ADMIN);
+
+    if (adminUser) {
+      await databaseService.updateOne<UserType>(ACCOUNTS_TABLE_NAME, ACCOUNTS_STORAGE_KEY, adminUser.id, {
+        password: newResetPassword
+      });
+      alert(`SENHA ATUALIZADA!\nA nova senha para ${selectedCompanyForPassword.name} é: ${newResetPassword}`);
+      setIsPasswordModalOpen(false);
+    } else {
+      alert('Usuário administrador não encontrado para esta empresa.');
+    }
   };
 
   const handleResetSystem = async () => {
@@ -169,7 +222,7 @@ export const SuperAdmin: React.FC = () => {
           </div>
           <div>
             <h1 className="text-3xl font-black text-slate-900 tracking-tight">Console Multiplus</h1>
-            <p className="text-slate-500 font-medium">Controle central de unidades SaaS.</p>
+            <p className="text-slate-500 font-medium">Controle de Mensalidades e Acessos.</p>
           </div>
         </div>
         <div className="flex gap-3">
@@ -183,7 +236,7 @@ export const SuperAdmin: React.FC = () => {
             onClick={() => setIsModalOpen(true)}
             className="flex items-center justify-center px-6 py-4 bg-indigo-600 text-white rounded-[1.5rem] font-black shadow-2xl hover:bg-indigo-700 transition-all uppercase tracking-widest text-xs"
           >
-            <Plus size={20} className="mr-2" /> Novo Cliente
+            <Plus size={20} className="mr-2" /> Nova Unidade
           </button>
         </div>
       </div>
@@ -194,22 +247,22 @@ export const SuperAdmin: React.FC = () => {
            <p className="text-4xl font-black text-slate-900">{companies.filter(c => c.status === CompanyStatus.ACTIVE).length}</p>
         </div>
         <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
-           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Faturamento Estimado</p>
-           <p className="text-4xl font-black text-slate-900">{formatToBRL(companies.length * FIXED_PLAN_PRICE)}</p>
+           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Receita Mensal Recorrente</p>
+           <p className="text-4xl font-black text-emerald-600">{formatToBRL(companies.length * FIXED_PLAN_PRICE)}</p>
         </div>
         <div className="bg-slate-900 p-8 rounded-[2.5rem] text-white shadow-2xl relative overflow-hidden">
            <ShieldCheck className="absolute -bottom-4 -right-4 opacity-10 text-white" size={100} />
-           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Segurança</p>
-           <p className="text-2xl font-black">Sistema Blindado</p>
+           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Gestão Master</p>
+           <p className="text-2xl font-black">Controle Total</p>
         </div>
       </div>
 
       <div className="bg-white rounded-[3rem] border border-slate-100 shadow-sm overflow-hidden">
         <div className="p-8 border-b border-slate-50 flex items-center justify-between gap-4">
-           <h3 className="text-xl font-black text-slate-900">Empresas Contratantes</h3>
+           <h3 className="text-xl font-black text-slate-900">Carteira de Clientes</h3>
            <div className="relative max-w-xs w-full">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-              <input type="text" placeholder="Buscar..." className="w-full pl-12 pr-4 py-3 bg-slate-50 border-none rounded-2xl text-sm font-bold outline-none" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+              <input type="text" placeholder="Buscar empresa..." className="w-full pl-12 pr-4 py-3 bg-slate-50 border-none rounded-2xl text-sm font-bold outline-none" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
            </div>
         </div>
         
@@ -217,9 +270,9 @@ export const SuperAdmin: React.FC = () => {
           <table className="w-full text-left">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-100">
-                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Unidade</th>
-                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Status Setup</th>
-                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Status SaaS</th>
+                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Empresa / Contato</th>
+                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Status Pagamento</th>
+                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Ações</th>
                 <th className="px-8 py-5"></th>
               </tr>
             </thead>
@@ -240,28 +293,27 @@ export const SuperAdmin: React.FC = () => {
                     </div>
                   </td>
                   <td className="px-8 py-6 text-center">
-                    {c.profileCompleted ? (
-                      <span className="text-[9px] font-black text-emerald-600 uppercase flex items-center justify-center gap-1"><UserCheck size={12}/> Configurado</span>
-                    ) : (
-                      <span className="text-[9px] font-black text-amber-500 uppercase flex items-center justify-center gap-1"><Clock size={12}/> Pendente</span>
-                    )}
-                  </td>
-                  <td className="px-8 py-6 text-right">
                     <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase ${
                       c.status === CompanyStatus.ACTIVE ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
                     }`}>
-                      {c.status === CompanyStatus.ACTIVE ? 'Ativo' : 'Suspenso'}
+                      {c.status === CompanyStatus.ACTIVE ? 'Em Dia' : 'Bloqueado'}
+                    </span>
+                  </td>
+                  <td className="px-8 py-6 text-right">
+                    <span className="text-[10px] font-bold text-slate-400">
+                      {c.status === CompanyStatus.ACTIVE ? 'Acesso Liberado' : 'Acesso Suspenso'}
                     </span>
                   </td>
                   <td className="px-8 py-6 text-right relative">
                     <button onClick={() => setActiveMenu(activeMenu === c.id ? null : c.id)} className="p-2 text-slate-300 hover:text-indigo-600 transition-all"><MoreVertical size={20} /></button>
                     {activeMenu === c.id && (
-                      <div className="absolute right-12 top-14 w-60 bg-white border border-slate-100 rounded-[2rem] shadow-2xl z-50 py-4 animate-in fade-in zoom-in duration-200">
+                      <div className="absolute right-12 top-14 w-64 bg-white border border-slate-100 rounded-[2rem] shadow-2xl z-50 py-4 animate-in fade-in zoom-in duration-200">
                         <button onClick={() => handleLoginAs(c)} className="w-full flex items-center px-6 py-3 text-xs text-indigo-600 font-black hover:bg-indigo-50 transition-all uppercase tracking-widest"><ArrowUpRight size={14} className="mr-3" /> Dashboard</button>
                         <button onClick={() => handleSendCredentials(c)} className="w-full flex items-center px-6 py-3 text-xs text-emerald-600 font-black hover:bg-emerald-50 transition-all uppercase tracking-widest"><MessageCircle size={14} className="mr-3" /> Enviar Acesso</button>
+                        <button onClick={() => openPasswordModal(c)} className="w-full flex items-center px-6 py-3 text-xs text-amber-600 font-black hover:bg-amber-50 transition-all uppercase tracking-widest"><Key size={14} className="mr-3" /> Alterar Senha</button>
                         <div className="h-px bg-slate-50 my-2 mx-4"></div>
                         <button onClick={() => toggleCompanyStatus(c.id)} className={`w-full flex items-center px-6 py-3 text-xs font-black hover:bg-rose-50 transition-all uppercase tracking-widest ${c.status === CompanyStatus.ACTIVE ? 'text-rose-600' : 'text-emerald-600'}`}>
-                          {c.status === CompanyStatus.ACTIVE ? <><Ban size={14} className="mr-3" /> Bloquear</> : <><UserCheck size={14} className="mr-3" /> Desbloquear</>}
+                          {c.status === CompanyStatus.ACTIVE ? <><Ban size={14} className="mr-3" /> Bloquear (Inadimplência)</> : <><UserCheck size={14} className="mr-3" /> Reativar Acesso</>}
                         </button>
                       </div>
                     )}
@@ -287,12 +339,45 @@ export const SuperAdmin: React.FC = () => {
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => setIsModalOpen(false)}></div>
           <div className="relative bg-white w-full max-w-xl rounded-[3.5rem] p-10 shadow-2xl animate-in zoom-in">
-            <h2 className="text-2xl font-black text-slate-900 uppercase mb-8">Provisionar Unidade</h2>
+            <div className="flex justify-between items-center mb-8">
+               <h2 className="text-2xl font-black text-slate-900 uppercase">Provisionar Unidade</h2>
+               <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-rose-600"><X size={24} /></button>
+            </div>
             <form className="space-y-6" onSubmit={handleRegisterCompany}>
                <input type="text" value={companyName} onChange={e => setCompanyName(e.target.value)} className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none" placeholder="Nome Fantasia..." required />
                <input type="email" value={adminEmail} onChange={e => setAdminEmail(e.target.value)} className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none" placeholder="Email do Empresário..." required />
                <input type="text" value={adminPassword} onChange={e => setAdminPassword(e.target.value)} className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none" placeholder="Senha Provisória..." required />
-               <button type="submit" className="w-full py-5 bg-indigo-600 text-white rounded-[2rem] font-black uppercase tracking-widest text-xs shadow-xl">Criar Ambiente e Acesso</button>
+               <button type="submit" className="w-full py-5 bg-indigo-600 text-white rounded-[2rem] font-black uppercase tracking-widest text-xs shadow-xl hover:bg-indigo-700 transition-all">Criar Ambiente e Acesso</button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {isPasswordModalOpen && selectedCompanyForPassword && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => setIsPasswordModalOpen(false)}></div>
+          <div className="relative bg-white w-full max-w-md rounded-[3.5rem] p-10 shadow-2xl animate-in zoom-in">
+            <div className="flex justify-between items-center mb-6">
+               <h2 className="text-xl font-black text-slate-900 uppercase">Alterar Senha do Admin</h2>
+               <button onClick={() => setIsPasswordModalOpen(false)} className="text-slate-400 hover:text-rose-600"><X size={24} /></button>
+            </div>
+            
+            <div className="mb-6 p-4 bg-amber-50 rounded-2xl border border-amber-100">
+              <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-1">Empresa Alvo</p>
+              <p className="text-sm font-bold text-slate-900">{selectedCompanyForPassword.name}</p>
+              <p className="text-xs text-slate-500">{selectedCompanyForPassword.adminEmail}</p>
+            </div>
+
+            <form className="space-y-6" onSubmit={handleUpdatePassword}>
+               <div>
+                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Nova Senha</label>
+                 <input type="text" value={newResetPassword} onChange={e => setNewResetPassword(e.target.value)} className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none focus:ring-4 focus:ring-amber-100 transition-all" placeholder="Nova senha..." required />
+               </div>
+               <div>
+                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Confirmar Senha</label>
+                 <input type="text" value={confirmResetPassword} onChange={e => setConfirmResetPassword(e.target.value)} className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none focus:ring-4 focus:ring-amber-100 transition-all" placeholder="Confirme a senha..." required />
+               </div>
+               <button type="submit" className="w-full py-5 bg-amber-500 text-white rounded-[2rem] font-black uppercase tracking-widest text-xs shadow-xl hover:bg-amber-600 transition-all">Definir Nova Senha</button>
             </form>
           </div>
         </div>
