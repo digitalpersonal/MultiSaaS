@@ -114,6 +114,13 @@ export interface Customer {
   status?: string; // Adicionado para mock do SuperAdmin
 }
 
+export interface FinanceCategory {
+  id: string;
+  companyId: string;
+  name: string;
+  type: 'INCOME' | 'EXPENSE';
+}
+
 export interface Transaction {
   id: string;
   companyId: string; // Adicionado para multi-tenancy
@@ -127,4 +134,9 @@ export interface Transaction {
   method?: string;
   notes?: string;
   desc?: string; // Adicionado para mock do Finance
+  installment?: {
+    parentId: string;
+    current: number;
+    total: number;
+  };
 }
