@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { ShieldCheck, Mail, Lock, LogIn, AlertCircle, Building2, Zap, MessageCircle, Eye, EyeOff, Crown, Ban } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ShieldCheck, Mail, Lock, LogIn, AlertCircle, Building2, Zap, MessageCircle, Eye, EyeOff, Crown, Ban, Download } from 'lucide-react';
 import { UserRole, CompanyStatus, User as UserType, Company } from '../types';
 import { databaseService } from '../services/databaseService'; // Import databaseService
 
@@ -13,8 +13,32 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [installPrompt, setInstallPrompt] = useState<any>(null);
 
   const isMasterEmail = email.trim().toLowerCase() === 'digitalpersonal@gmail.com';
+
+  // Efeito para capturar o evento de instalação do PWA na tela de login
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: any) => {
+      e.preventDefault();
+      setInstallPrompt(e);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  const handleInstallApp = async () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    const { outcome } = await installPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setInstallPrompt(null);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -139,13 +163,23 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
           </form>
         </div>
 
-        <div className="mt-12 text-center space-y-10">
-          <button onClick={handleContactSupport} className="inline-flex items-center gap-3 px-8 py-4 bg-emerald-600 text-white rounded-3xl text-xs font-black uppercase tracking-widest shadow-xl hover:bg-emerald-700 transition-all active:scale-95 group">
+        <div className="mt-12 text-center flex flex-col items-center gap-4">
+          {installPrompt && (
+            <button 
+              onClick={handleInstallApp}
+              className="w-full inline-flex items-center justify-center gap-3 px-8 py-4 bg-gradient-to-r from-indigo-500 to-violet-500 text-white rounded-3xl text-xs font-black uppercase tracking-widest shadow-xl hover:shadow-2xl hover:scale-[1.02] transition-all"
+            >
+              <Download size={20} />
+              Instalar Sistema
+            </button>
+          )}
+
+          <button onClick={handleContactSupport} className="w-full inline-flex items-center justify-center gap-3 px-8 py-4 bg-emerald-600 text-white rounded-3xl text-xs font-black uppercase tracking-widest shadow-xl hover:bg-emerald-700 transition-all active:scale-95 group">
             <MessageCircle size={20} className="group-hover:animate-pulse" />
             Falar com o desenvolvedor
           </button>
           
-          <div className="pt-8 border-t border-slate-200/60">
+          <div className="pt-8 border-t border-slate-200/60 w-full">
             <p className="text-[11px] font-black text-slate-700 uppercase tracking-widest whitespace-nowrap">Desenvolvido por Multiplus - Sistemas Inteligentes</p>
             <p className="text-sm font-black text-slate-900 mt-2 uppercase tracking-[0.1em]">Silvio T. de Sá Filho</p>
           </div>

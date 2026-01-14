@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect, useRef } from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { Menu, X, Bell, User, LogOut, ChevronRight, LayoutDashboard, Package, Wrench, DollarSign, ShieldCheck } from 'lucide-react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Menu, X, Bell, User, LogOut, ChevronRight, LayoutDashboard, Package, Wrench, DollarSign, ShieldCheck, Download, ChevronLeft } from 'lucide-react';
 import { NAV_ITEMS, SUPER_ADMIN_NAV_ITEM } from '../constants';
 import { User as UserType, UserRole } from '../types';
 
@@ -13,7 +12,9 @@ interface LayoutProps {
 
 export const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [installPrompt, setInstallPrompt] = useState<any>(null);
   const location = useLocation();
+  const navigate = useNavigate();
   const mainRef = useRef<HTMLElement>(null);
 
   // Efeito para rolar para o topo sempre que a rota mudar
@@ -23,6 +24,36 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
       mainRef.current.scrollTo({ top: 0, behavior: 'smooth' });
     }
   }, [location.pathname]);
+
+  // Efeito para capturar o evento de instalação do PWA
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: any) => {
+      // Previne o comportamento padrão do navegador
+      e.preventDefault();
+      // Salva o evento para acionar depois
+      setInstallPrompt(e);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  const handleInstallApp = async () => {
+    if (!installPrompt) return;
+    
+    // Mostra o prompt nativo
+    installPrompt.prompt();
+    
+    // Espera o usuário responder
+    const { outcome } = await installPrompt.userChoice;
+    
+    if (outcome === 'accepted') {
+      setInstallPrompt(null);
+    }
+  };
 
   const isSuperAdmin = user.role === UserRole.SUPER_ADMIN;
 
@@ -131,6 +162,18 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
         <header className="h-16 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-4 lg:px-8 sticky top-0 z-30 shrink-0">
           <div className="flex items-center">
             <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-2 -ml-2 text-slate-500 hover:bg-slate-100 rounded-xl transition-colors mr-2"><Menu size={24} /></button>
+            
+            {/* Botão de Voltar Mobile */}
+            {location.pathname !== '/' && (
+               <button 
+                 onClick={() => navigate(-1)} 
+                 className="lg:hidden p-2 text-slate-500 hover:bg-slate-100 rounded-xl transition-colors mr-2"
+                 title="Voltar"
+               >
+                 <ChevronLeft size={24} />
+               </button>
+            )}
+
             <h2 className="text-sm font-bold text-slate-900 lg:hidden">
               {location.pathname === '/super-admin' ? 'Gestão SaaS' : (NAV_ITEMS.find(item => item.path === location.pathname)?.label || 'Painel')}
             </h2>
@@ -146,6 +189,30 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
             </div>
           </div>
         </header>
+
+        {/* --- BANNER DE INSTALAÇÃO NO TOPO (ALTA VISIBILIDADE) --- */}
+        {installPrompt && (
+           <div className="bg-slate-900 text-white relative z-20 overflow-hidden shrink-0">
+              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500"></div>
+              <div className="max-w-7xl mx-auto px-4 py-4 md:py-3 flex flex-col md:flex-row items-center justify-between gap-4">
+                 <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-900/50 animate-pulse">
+                       <Download size={20} className="text-white" />
+                    </div>
+                    <div>
+                       <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-0.5">Versão App Disponível</p>
+                       <p className="text-sm font-bold text-white leading-tight">Instale o Sistema Multiplus para melhor performance.</p>
+                    </div>
+                 </div>
+                 <button 
+                   onClick={handleInstallApp}
+                   className="w-full md:w-auto px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white rounded-xl font-black uppercase tracking-widest text-[10px] shadow-lg flex items-center justify-center gap-2 transition-all active:scale-95"
+                 >
+                   <Download size={14} /> Instalar Agora
+                 </button>
+              </div>
+           </div>
+        )}
 
         <main ref={mainRef} className="flex-1 overflow-y-auto p-4 lg:p-8 pb-24 lg:pb-8 scroll-smooth">
           <div className="max-w-7xl mx-auto min-h-full flex flex-col">
@@ -169,8 +236,34 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
               </Link>
             );
           })}
+           {installPrompt && (
+               <button 
+                 onClick={handleInstallApp}
+                 className="flex flex-col items-center space-y-1 text-emerald-600 animate-pulse"
+                 title="Instalar"
+               >
+                 <div className="bg-emerald-50 p-1.5 rounded-lg"><Download size={20} /></div>
+                 <span className="text-[10px] font-bold">Instalar</span>
+               </button>
+            )}
         </nav>
       </div>
+
+      {/* --- BOTÃO FLUTUANTE DE INSTALAÇÃO (DESKTOP) --- */}
+      {installPrompt && (
+        <button
+          onClick={handleInstallApp}
+          className="hidden lg:flex fixed bottom-8 right-8 z-[60] bg-slate-900 text-white px-6 py-4 rounded-full shadow-2xl items-center gap-3 hover:scale-105 transition-transform hover:bg-black group"
+        >
+          <div className="p-2 bg-indigo-600 rounded-full group-hover:rotate-12 transition-transform">
+             <Download size={20} />
+          </div>
+          <div className="text-left">
+             <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Sistema</p>
+             <p className="text-xs font-bold">Instalar App</p>
+          </div>
+        </button>
+      )}
 
       <style>{`
         .pb-safe { padding-bottom: env(safe-area-inset-bottom, 12px); }
