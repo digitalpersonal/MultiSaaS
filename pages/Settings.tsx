@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect } from 'react';
-import { Building2, CreditCard, Save, QrCode, Key, MapPin, ImageIcon, UploadCloud, AlertTriangle, ChevronRight, Zap } from 'lucide-react';
+import { Building2, CreditCard, Save, QrCode, Key, MapPin, ImageIcon, UploadCloud, AlertTriangle, ChevronRight, Zap, Phone } from 'lucide-react';
 import { databaseService } from '../services/databaseService';
 import { Company as CompanyType, UserRole, User } from '../types';
 
@@ -18,6 +19,7 @@ export const Settings: React.FC = () => {
   const [companyName, setCompanyName] = useState('');
   const [taxId, setTaxId] = useState('');
   const [address, setAddress] = useState('');
+  const [phone, setPhone] = useState('');
   const [pixType, setPixType] = useState('CNPJ');
   const [pixKey, setPixKey] = useState('');
   const [logo, setLogo] = useState('');
@@ -35,7 +37,8 @@ export const Settings: React.FC = () => {
           setCompany(currentCompany);
           setCompanyName(currentCompany.name || '');
           setTaxId(currentCompany.taxId || '');
-          setAddress(currentCompany.address || ''); // Assumindo que company tem address
+          setAddress(currentCompany.address || ''); 
+          setPhone(currentCompany.phone || ''); 
           setPixType(currentCompany.pixType || 'CNPJ');
           setPixKey(currentCompany.pixKey || '');
           setLogo(currentCompany.logo || '');
@@ -65,7 +68,8 @@ export const Settings: React.FC = () => {
       ...company, 
       name: companyName, 
       taxId, 
-      address, // Salva o endereço
+      address,
+      phone,
       pixType, 
       pixKey, 
       logo, 
@@ -152,6 +156,10 @@ export const Settings: React.FC = () => {
                     <input type="text" value={taxId} onChange={e => setTaxId(e.target.value)} className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none" placeholder="00.000.000/0000-00" />
                   </div>
                   <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1 flex items-center gap-1"><Phone size={10} /> WhatsApp / Contato</label>
+                    <input type="text" value={phone} onChange={e => setPhone(e.target.value)} className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none" placeholder="(00) 90000-0000" />
+                  </div>
+                  <div className="col-span-full">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Endereço de Atendimento</label>
                     <input type="text" value={address} onChange={e => setAddress(e.target.value)} className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none" placeholder="Rua, Número, Bairro, Cidade - UF" />
                   </div>

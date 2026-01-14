@@ -28,8 +28,8 @@ export interface Company {
   pixType?: 'CPF' | 'CNPJ' | 'EMAIL' | 'PHONE' | 'RANDOM';
   pixKey?: string;
   adminEmail?: string; // Temporário para SuperAdmin mockado
-  // Add 'address' property as it is used in Settings.tsx
   address?: string; 
+  phone?: string; // WhatsApp / Telefone de Contato
 }
 
 export interface User {
