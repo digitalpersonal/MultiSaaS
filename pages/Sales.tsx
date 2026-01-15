@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Search, ShoppingCart, Plus, Minus, Trash2, Tag, DollarSign, CreditCard, Banknote, QrCode, CheckCircle2, X, User, Printer, ShoppingBag, ArrowRight, ArrowLeft, Zap, Package, Store, UserPlus, ChevronLeft, Check, LayoutDashboard, AlertCircle } from 'lucide-react';
+import { Search, ShoppingCart, Plus, Minus, Trash2, Tag, DollarSign, CreditCard, Banknote, QrCode, CheckCircle2, X, User, Printer, ShoppingBag, ArrowRight, ArrowLeft, Zap, Package, Store, UserPlus, ChevronLeft, Check, LayoutDashboard, AlertCircle, MessageCircle, Share2, Phone } from 'lucide-react';
 import { databaseService } from '../services/databaseService';
 import { Product, Customer, Transaction, UserRole, Company } from '../types';
 import { useNavigate } from 'react-router-dom';
@@ -31,10 +31,14 @@ export const Sales: React.FC = () => {
   
   const [cart, setCart] = useState<any[]>([]);
   const [discountValue, setDiscountValue] = useState('0,00');
-  const [receivedValue, setReceivedValue] = useState('0,00'); // Não usado na finalização, mas pode ser útil para troco
+  const [receivedValue, setReceivedValue] = useState('0,00'); 
   const [paymentMethod, setPaymentMethod] = useState<string | null>(null);
+  
+  // Success Modal States
   const [isSuccess, setIsSuccess] = useState(false);
   const [lastSale, setLastSale] = useState<any>(null);
+  const [showPhoneInput, setShowPhoneInput] = useState(false);
+  const [manualPhone, setManualPhone] = useState('');
 
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -75,7 +79,6 @@ export const Sales: React.FC = () => {
     setCart(prev => {
       const existing = prev.find(item => item.id === product.id);
       if (existing) {
-        // Verificar estoque disponível antes de adicionar
         const availableStock = product.stock !== undefined ? product.stock : Infinity;
         if (existing.quantity + 1 <= availableStock) {
           return prev.map(item => item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item);
@@ -84,7 +87,6 @@ export const Sales: React.FC = () => {
           return prev;
         }
       }
-      // Verificar estoque para o primeiro item adicionado
       if (product.stock !== undefined && product.stock < 1) {
         alert(`Estoque insuficiente para ${product.name}!`);
         return prev;
@@ -104,7 +106,7 @@ export const Sales: React.FC = () => {
         if (newQuantity > 0 && newQuantity <= availableStock) {
           return { ...item, quantity: newQuantity };
         } else if (newQuantity === 0) {
-          return { ...item, quantity: 0, _remove: true }; // Marca para remover
+          return { ...item, quantity: 0, _remove: true }; 
         } else if (newQuantity > availableStock) {
           alert(`Estoque máximo para ${item.name} alcançado!`);
         }
@@ -123,7 +125,7 @@ export const Sales: React.FC = () => {
     if (!currentCompany) return null;
     let rate = 0;
     if (paymentMethod === 'CRÉDITO') rate = currentCompany.creditCardFee || 0;
-    if (paymentMethod === 'CARTÃO') rate = currentCompany.debitCardFee || 0; // Assumindo débito para botão 'Cartão'
+    if (paymentMethod === 'CARTÃO') rate = currentCompany.debitCardFee || 0; 
     
     if (rate > 0) {
       const feeValue = total * (rate / 100);
@@ -137,7 +139,6 @@ export const Sales: React.FC = () => {
   const handleFinalize = async () => {
     if (!companyId) return;
 
-    // 1. Registrar no financeiro (Receita Bruta - Valor Cheio pago pelo cliente)
     const incomeId = `FIN-${Date.now()}`;
     const newTransaction: Transaction = { 
       id: incomeId, 
@@ -152,7 +153,6 @@ export const Sales: React.FC = () => {
     };
     await databaseService.insertOne<Transaction>(FINANCE_TABLE_NAME, FINANCE_STORAGE_KEY, newTransaction);
 
-    // 2. Aplicar Taxa Automática se Cartão (Despesa separada da empresa)
     if (feeInfo) {
       const feeTransaction: Transaction = {
         id: `FEE-${Date.now()}`,
@@ -168,7 +168,6 @@ export const Sales: React.FC = () => {
       await databaseService.insertOne<Transaction>(FINANCE_TABLE_NAME, FINANCE_STORAGE_KEY, feeTransaction);
     }
 
-    // 3. Decrementar estoque dos produtos vendidos
     for (const item of cart) {
       if (item.type === 'PHYSICAL' && item.stock !== undefined) {
         const currentProduct = catalog.find(p => p.id === item.id);
@@ -178,16 +177,49 @@ export const Sales: React.FC = () => {
         }
       }
     }
-    // Recarregar catálogo após as vendas
+    
     const updatedCatalog = await databaseService.fetch<Product>(INVENTORY_TABLE_NAME, INVENTORY_STORAGE_KEY);
     setCatalog(updatedCatalog);
 
-    const saleData = { id: `VEN-${Date.now().toString().slice(-5)}`, customer: selectedCustomer || { name: 'Consumidor Final' }, total, paymentMethod, date: new Date().toISOString(), items: cart };
+    const saleData = { 
+      id: `VEN-${Date.now().toString().slice(-5)}`, 
+      customer: selectedCustomer || { name: 'Consumidor Final', phone: '' }, 
+      total, 
+      paymentMethod, 
+      date: new Date().toISOString(), 
+      items: cart 
+    };
     setLastSale(saleData); 
     setIsSuccess(true);
   };
 
-  const resetSale = () => { setCart([]); setFlow('START'); setPaymentMethod(null); setDiscountValue('0,00'); setReceivedValue('0,00'); setSelectedCustomer(null); setIsSuccess(false); };
+  const handleWhatsAppShare = () => {
+    if (!lastSale) return;
+    
+    // Tenta pegar o telefone do cadastro ou o manual digitado
+    const phoneToUse = manualPhone || lastSale.customer.phone?.replace(/\D/g, '');
+    
+    if (!phoneToUse || phoneToUse.length < 8) {
+        setShowPhoneInput(true);
+        return;
+    }
+
+    const companyName = currentCompany?.name || 'Nossa Loja';
+    const message = `Olá ${lastSale.customer.name}! 🛍️\n\nAqui está o comprovante da sua compra na *${companyName}*.\n\n*Pedido:* ${lastSale.id}\n*Total:* ${formatToBRL(lastSale.total)}\n\nObrigado pela preferência!`;
+    const url = `https://wa.me/${phoneToUse.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`;
+    
+    // Usa uma janela nomeada para evitar múltiplas abas
+    window.open(url, 'MultiplusWhatsApp'); 
+    
+    // Reseta estado manual após envio
+    setShowPhoneInput(false);
+    setManualPhone('');
+  };
+
+  const resetSale = () => { 
+      setCart([]); setFlow('START'); setPaymentMethod(null); setDiscountValue('0,00'); setReceivedValue('0,00'); setSelectedCustomer(null); setIsSuccess(false); 
+      setShowPhoneInput(false); setManualPhone('');
+  };
 
   const filteredCatalog = catalog.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()) || (p.sku && p.sku.toLowerCase().includes(searchTerm.toLowerCase())));
   const filteredCustomers = customers.filter(c => c.name.toLowerCase().includes(customerSearch.toLowerCase()));
@@ -298,7 +330,6 @@ export const Sales: React.FC = () => {
                ) : (
                  <div className="space-y-4 animate-in slide-in-from-bottom-4">
                     <div className="grid grid-cols-2 gap-2">
-                       {/* CRÉDITO = Cartão Crédito (Taxa Crédito) | CARTÃO = Cartão Débito (Taxa Débito) */}
                        {['PIX', 'DINHEIRO', 'CARTÃO', 'CRÉDITO'].map(m => (
                          <button key={m} onClick={() => setPaymentMethod(m)} className={`py-4 border-2 rounded-2xl text-[10px] font-black uppercase transition-all ${paymentMethod === m ? 'border-indigo-600 bg-indigo-50 text-indigo-600' : 'border-white bg-white text-slate-400'}`}>{m === 'CARTÃO' ? 'DÉBITO' : m}</button>
                        ))}
@@ -328,10 +359,28 @@ export const Sales: React.FC = () => {
              <div className="w-24 h-24 bg-emerald-50 text-emerald-500 rounded-[2rem] flex items-center justify-center mx-auto mb-8 shadow-inner"><CheckCircle2 size={48} /></div>
              <h2 className="text-2xl font-black text-slate-900 mb-2">Venda Concluída!</h2>
              <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em] mb-10">Código: {lastSale?.id}</p>
-             <div className="space-y-3">
-                <button onClick={() => window.print()} className="w-full py-5 bg-slate-900 text-white rounded-3xl font-black uppercase tracking-widest text-[10px] flex items-center justify-center gap-3"><Printer size={18} /> Imprimir Recibo</button>
-                <button onClick={resetSale} className="w-full py-5 bg-indigo-50 text-indigo-600 rounded-3xl font-black uppercase tracking-widest text-[10px]">Nova Venda</button>
-             </div>
+             
+             {showPhoneInput ? (
+                <div className="mb-8 space-y-4 animate-in slide-in-from-bottom-2">
+                   <p className="text-xs text-slate-500 font-bold">Digite o WhatsApp do Cliente:</p>
+                   <input 
+                     type="text" 
+                     value={manualPhone}
+                     onChange={(e) => setManualPhone(e.target.value)}
+                     placeholder="(00) 00000-0000" 
+                     className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-center text-lg font-black outline-none focus:ring-2 focus:ring-emerald-500/20"
+                     autoFocus
+                   />
+                   <button onClick={handleWhatsAppShare} disabled={!manualPhone} className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-xl hover:bg-emerald-700 transition-all disabled:opacity-50">Enviar Mensagem</button>
+                   <button onClick={() => setShowPhoneInput(false)} className="text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600">Cancelar Envio</button>
+                </div>
+             ) : (
+                <div className="space-y-3">
+                    <button onClick={() => window.print()} className="w-full py-5 bg-slate-900 text-white rounded-3xl font-black uppercase tracking-widest text-[10px] flex items-center justify-center gap-3 shadow-xl"><Printer size={18} /> Imprimir Recibo</button>
+                    <button onClick={handleWhatsAppShare} className="w-full py-5 bg-emerald-600 text-white rounded-3xl font-black uppercase tracking-widest text-[10px] flex items-center justify-center gap-3 shadow-xl hover:bg-emerald-700 transition-all"><Share2 size={18} /> Enviar WhatsApp</button>
+                    <button onClick={resetSale} className="w-full py-5 bg-indigo-50 text-indigo-600 rounded-3xl font-black uppercase tracking-widest text-[10px] hover:bg-indigo-100 transition-all">Nova Venda</button>
+                </div>
+             )}
           </div>
         </div>
       )}

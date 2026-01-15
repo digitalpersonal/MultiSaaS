@@ -68,6 +68,8 @@ export interface ServiceOrder {
   customerName: string;
   phone?: string;
   device: string;
+  imei?: string; // Novo
+  devicePassword?: string; // Novo
   defect: string;
   status: OSStatus;
   price: number;
@@ -164,4 +166,5 @@ export interface Budget {
   createdAt: string;
   validUntil: string;
   notes?: string;
+  linkedOsId?: string; // Novo: Link para atualizar a OS original
 }

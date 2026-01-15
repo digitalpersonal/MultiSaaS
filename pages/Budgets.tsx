@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Search, Plus, FileText, CheckCircle2, X, Trash2, Printer, Calendar, User, ShoppingCart, ArrowRight, DollarSign, Package } from 'lucide-react';
+import { Search, Plus, FileText, CheckCircle2, X, Trash2, Printer, Calendar, User, ShoppingCart, ArrowRight, DollarSign, Package, Share2, Phone, Zap, Wrench, ArrowUpRight, ArrowLeftCircle } from 'lucide-react';
 import { databaseService } from '../services/databaseService';
-import { Budget, BudgetItem, Product, Customer, UserRole, Transaction } from '../types';
-import { useNavigate } from 'react-router-dom';
+import { Budget, BudgetItem, Product, Customer, UserRole, Transaction, Company, ServiceOrder, OSStatus } from '../types';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 const currencyFormatter = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const formatToBRL = (value: number) => currencyFormatter.format(value);
@@ -16,10 +16,18 @@ export const Budgets: React.FC = () => {
   const CUSTOMER_TABLE_NAME = 'customers';
   const FINANCE_STORAGE_KEY = 'multiplus_finance';
   const FINANCE_TABLE_NAME = 'finance';
+  const TENANTS_STORAGE_KEY = 'multiplus_tenants';
+  const TENANTS_TABLE_NAME = 'tenants';
+  const OS_STORAGE_KEY = 'multiplus_os';
+  const OS_TABLE_NAME = 'os';
+
+  const navigate = useNavigate();
+  const location = useLocation();
 
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [currentCompany, setCurrentCompany] = useState<Company | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -27,10 +35,23 @@ export const Budgets: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [customerSearch, setCustomerSearch] = useState('');
   const [productSearch, setProductSearch] = useState('');
+  const [itemTypeFilter, setItemTypeFilter] = useState<'ALL' | 'PHYSICAL' | 'SERVICE'>('ALL');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [cartItems, setCartItems] = useState<BudgetItem[]>([]);
   const [notes, setNotes] = useState('');
   const [validUntil, setValidUntil] = useState('');
+  
+  // Link com OS
+  const [linkedOsId, setLinkedOsId] = useState<string | undefined>(undefined);
+
+  // Success Modal
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [lastCreatedBudget, setLastCreatedBudget] = useState<Budget | null>(null);
+  const [showPhoneInput, setShowPhoneInput] = useState(false);
+  const [manualPhone, setManualPhone] = useState('');
+
+  // Conversion Modal
+  const [budgetToProcess, setBudgetToProcess] = useState<Budget | null>(null);
 
   const getCurrentCompanyId = (): string | undefined => {
     const userString = localStorage.getItem('multiplus_user');
@@ -51,10 +72,24 @@ export const Budgets: React.FC = () => {
       const pData = await databaseService.fetch<Product>(INVENTORY_TABLE_NAME, INVENTORY_STORAGE_KEY);
       const cData = await databaseService.fetch<Customer>(CUSTOMER_TABLE_NAME, CUSTOMER_STORAGE_KEY);
       
+      if (companyId) {
+        const tenants = await databaseService.fetch<Company>(TENANTS_TABLE_NAME, TENANTS_STORAGE_KEY);
+        const comp = tenants.find(t => t.id === companyId);
+        setCurrentCompany(comp || null);
+      }
+
       setBudgets(bData.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
       setProducts(pData);
       setCustomers(cData);
       setIsLoading(false);
+
+      // Check for OS data passed via navigation
+      if (location.state && location.state.osData) {
+        const os: ServiceOrder = location.state.osData;
+        handleOpenModalFromOS(os, cData);
+        // Limpar o state para não reabrir se der refresh (opcional, mas boa prática)
+        window.history.replaceState({}, document.title);
+      }
     };
     loadData();
   }, [companyId]);
@@ -63,8 +98,25 @@ export const Budgets: React.FC = () => {
     setSelectedCustomer(null);
     setCustomerSearch('');
     setProductSearch('');
+    setItemTypeFilter('ALL');
     setCartItems([]);
     setNotes('');
+    setLinkedOsId(undefined);
+    const nextWeek = new Date();
+    nextWeek.setDate(nextWeek.getDate() + 7);
+    setValidUntil(nextWeek.toISOString().split('T')[0]);
+    setIsModalOpen(true);
+  };
+
+  const handleOpenModalFromOS = (os: ServiceOrder, allCustomers: Customer[]) => {
+    const cust = allCustomers.find(c => c.id === os.customerId);
+    setSelectedCustomer(cust || { id: os.customerId, name: os.customerName, phone: os.phone || '', email: '', taxId: '', type: 'INDIVIDUAL', companyId: os.companyId } as Customer);
+    setCustomerSearch(os.customerName);
+    setProductSearch('');
+    setItemTypeFilter('ALL');
+    setCartItems([]);
+    setNotes(`Referente à OS #${os.id} - ${os.device}. Defeito: ${os.defect}`);
+    setLinkedOsId(os.id);
     const nextWeek = new Date();
     nextWeek.setDate(nextWeek.getDate() + 7);
     setValidUntil(nextWeek.toISOString().split('T')[0]);
@@ -114,13 +166,19 @@ export const Budgets: React.FC = () => {
       status: 'OPEN',
       createdAt: new Date().toISOString(),
       validUntil,
-      notes
+      notes,
+      linkedOsId // Salva o link com a OS se houver
     };
 
     await databaseService.insertOne<Budget>(BUDGET_TABLE_NAME, BUDGET_STORAGE_KEY, newBudget);
     const updatedBudgets = await databaseService.fetch<Budget>(BUDGET_TABLE_NAME, BUDGET_STORAGE_KEY);
     setBudgets(updatedBudgets.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+    
+    setLastCreatedBudget(newBudget);
     setIsModalOpen(false);
+    setShowSuccessModal(true);
+    setShowPhoneInput(false);
+    setManualPhone('');
   };
 
   const handleDeleteBudget = async (id: string) => {
@@ -131,20 +189,19 @@ export const Budgets: React.FC = () => {
     }
   };
 
-  const handleConvertToSale = async (budget: Budget) => {
-    if (!companyId) return;
-    if (budget.status === 'CONVERTED') return;
+  const handleProcessBudget = (budget: Budget) => {
+    setBudgetToProcess(budget);
+  };
 
-    if (!confirm(`Deseja EFETIVAR este orçamento?\n\nIsso irá:\n1. Baixar o estoque dos itens\n2. Lançar R$ ${formatToBRL(budget.finalValue)} no financeiro\n3. Marcar o orçamento como CONVERTIDO`)) {
-      return;
-    }
+  const handleConvertToSale = async () => {
+    if (!companyId || !budgetToProcess) return;
 
     // 1. Atualizar Financeiro
     const newTransaction: Transaction = {
       id: `FIN-${Date.now()}`,
       companyId,
-      description: `Venda ref. Orçamento ${budget.id}`,
-      amount: budget.finalValue,
+      description: `Venda ref. Orçamento ${budgetToProcess.id}`,
+      amount: budgetToProcess.finalValue,
       type: 'INCOME',
       status: 'PAID',
       date: new Date().toISOString(),
@@ -154,7 +211,7 @@ export const Budgets: React.FC = () => {
     await databaseService.insertOne<Transaction>(FINANCE_TABLE_NAME, FINANCE_STORAGE_KEY, newTransaction);
 
     // 2. Baixar Estoque
-    for (const item of budget.items) {
+    for (const item of budgetToProcess.items) {
       const product = products.find(p => p.id === item.productId);
       if (product && product.type === 'PHYSICAL' && product.stock !== undefined) {
         const newStock = product.stock - item.quantity;
@@ -163,17 +220,91 @@ export const Budgets: React.FC = () => {
     }
 
     // 3. Atualizar Status do Orçamento
-    await databaseService.updateOne<Budget>(BUDGET_TABLE_NAME, BUDGET_STORAGE_KEY, budget.id, { status: 'CONVERTED' });
+    await databaseService.updateOne<Budget>(BUDGET_TABLE_NAME, BUDGET_STORAGE_KEY, budgetToProcess.id, { status: 'CONVERTED' });
+
+    // 4. Se houver OS vinculada, atualizar ela também (opcional, pode querer fechar a OS)
+    if (budgetToProcess.linkedOsId) {
+         await databaseService.updateOne<ServiceOrder>(OS_TABLE_NAME, OS_STORAGE_KEY, budgetToProcess.linkedOsId, { 
+             status: OSStatus.COMPLETED,
+             price: budgetToProcess.finalValue,
+             defect: `${budgetToProcess.notes || ''}. Itens: ${budgetToProcess.items.map(i => i.name).join(', ')}`
+         });
+    }
 
     // Atualizar UI
     const updatedBudgets = await databaseService.fetch<Budget>(BUDGET_TABLE_NAME, BUDGET_STORAGE_KEY);
     setBudgets(updatedBudgets.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
     
-    // Atualizar produtos locais para refletir baixa de estoque
     const updatedProducts = await databaseService.fetch<Product>(INVENTORY_TABLE_NAME, INVENTORY_STORAGE_KEY);
     setProducts(updatedProducts);
 
-    alert('Venda efetuada com sucesso!');
+    setBudgetToProcess(null);
+    alert('Venda gerada com sucesso! Estoque atualizado e receita lançada.');
+  };
+
+  const handleConvertToOS = async () => {
+    if (!companyId || !budgetToProcess) return;
+
+    const itemsDescription = budgetToProcess.items.map(i => `${i.quantity}x ${i.name}`).join(', ');
+
+    // Se já existe uma OS vinculada, atualizamos ela
+    if (budgetToProcess.linkedOsId) {
+        await databaseService.updateOne<ServiceOrder>(OS_TABLE_NAME, OS_STORAGE_KEY, budgetToProcess.linkedOsId, {
+            status: OSStatus.WAITING_PARTS, // Ou IN_REPAIR
+            price: budgetToProcess.finalValue,
+            defect: `${budgetToProcess.notes || ''}. Aprovado: ${itemsDescription}`
+        });
+        alert(`A O.S. de origem (#${budgetToProcess.linkedOsId}) foi atualizada com os valores e itens aprovados!`);
+        navigate('/servicos');
+    } else {
+        // Se não, cria uma nova
+        const newOS: ServiceOrder = {
+            id: `OS-${Date.now().toString().slice(-5)}`,
+            companyId,
+            customerId: budgetToProcess.customerId || 'avulso',
+            customerName: budgetToProcess.customerName,
+            device: 'Equipamento do Orçamento',
+            defect: `Itens Aprovados: ${itemsDescription}. ${budgetToProcess.notes || ''}`,
+            status: OSStatus.AWAITING,
+            price: budgetToProcess.finalValue,
+            date: new Date().toISOString(),
+            checklist: { power: 'NOT_TESTED', touch: 'NOT_TESTED', cameras: 'NOT_TESTED', audio: 'NOT_TESTED', wifi: 'NOT_TESTED', charging: 'NOT_TESTED' },
+            deviceCondition: 'Vindo de Orçamento Aprovado',
+        };
+        await databaseService.insertOne<ServiceOrder>(OS_TABLE_NAME, OS_STORAGE_KEY, newOS);
+        alert('Nova Ordem de Serviço criada com sucesso! Acesse o módulo de Serviços para gerenciar.');
+        navigate('/servicos');
+    }
+
+    await databaseService.updateOne<Budget>(BUDGET_TABLE_NAME, BUDGET_STORAGE_KEY, budgetToProcess.id, { status: 'CONVERTED' });
+    
+    const updatedBudgets = await databaseService.fetch<Budget>(BUDGET_TABLE_NAME, BUDGET_STORAGE_KEY);
+    setBudgets(updatedBudgets.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+
+    setBudgetToProcess(null);
+  };
+
+  const handleWhatsAppShare = (budget?: Budget) => {
+    const targetBudget = budget || lastCreatedBudget;
+    if (!targetBudget) return;
+    
+    const customer = customers.find(c => c.id === targetBudget.customerId);
+    const phoneToUse = manualPhone || customer?.phone?.replace(/\D/g, '');
+    
+    if (!phoneToUse || phoneToUse.length < 8) {
+        setShowPhoneInput(true);
+        return;
+    }
+
+    const companyName = currentCompany?.name || 'Nossa Loja';
+    const message = `Olá ${targetBudget.customerName}! 📄\n\nSegue o orçamento solicitado na *${companyName}*.\n\n*Orçamento:* ${targetBudget.id}\n*Total:* ${formatToBRL(targetBudget.finalValue)}\n*Validade:* ${new Date(targetBudget.validUntil).toLocaleDateString()}\n\nAguardamos seu retorno!`;
+    const url = `https://wa.me/${phoneToUse.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`;
+    
+    // Usa uma janela nomeada para evitar múltiplas abas
+    window.open(url, 'MultiplusWhatsApp'); 
+
+    setShowPhoneInput(false);
+    setManualPhone('');
   };
 
   const filteredBudgets = budgets.filter(b => 
@@ -181,7 +312,14 @@ export const Budgets: React.FC = () => {
     b.id.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const filteredProducts = products.filter(p => p.name.toLowerCase().includes(productSearch.toLowerCase()));
+  const filteredProducts = products.filter(p => {
+    const matchesSearch = p.name.toLowerCase().includes(productSearch.toLowerCase());
+    const matchesType = itemTypeFilter === 'ALL' || 
+                        (itemTypeFilter === 'PHYSICAL' && p.type !== 'SERVICE') || 
+                        (itemTypeFilter === 'SERVICE' && p.type === 'SERVICE');
+    return matchesSearch && matchesType;
+  });
+
   const filteredCustomers = customers.filter(c => c.name.toLowerCase().includes(customerSearch.toLowerCase()));
 
   if (isLoading) {
@@ -197,7 +335,7 @@ export const Budgets: React.FC = () => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-black text-slate-900 tracking-tight">Gestão de Orçamentos</h1>
-          <p className="text-slate-500 text-sm font-medium">Crie propostas e transforme em vendas.</p>
+          <p className="text-slate-500 text-sm font-medium">Crie propostas para serviços e produtos.</p>
         </div>
         <button onClick={handleOpenModal} className="px-6 py-3 bg-indigo-600 text-white rounded-2xl font-black shadow-lg hover:bg-indigo-700 transition-all uppercase tracking-widest text-[10px] flex items-center gap-2">
           <Plus size={18} /> Novo Orçamento
@@ -232,13 +370,16 @@ export const Budgets: React.FC = () => {
                           budget.status === 'APPROVED' ? 'bg-blue-100 text-blue-700' :
                           budget.status === 'REJECTED' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'
                        }`}>
-                          {budget.status === 'CONVERTED' ? 'Venda Efetivada' : 
+                          {budget.status === 'CONVERTED' ? 'Aprovado' : 
                            budget.status === 'APPROVED' ? 'Aprovado' :
                            budget.status === 'REJECTED' ? 'Rejeitado' : 'Em Aberto'}
                        </span>
                     </div>
                     <p className="text-sm font-bold text-slate-600">{budget.customerName}</p>
                     <p className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1"><Calendar size={10} /> Criado em {new Date(budget.createdAt).toLocaleDateString()}</p>
+                    {budget.linkedOsId && (
+                       <p className="text-[9px] text-indigo-500 font-bold mt-1 flex items-center gap-1"><Wrench size={10}/> Vinculado à OS #{budget.linkedOsId}</p>
+                    )}
                  </div>
               </div>
 
@@ -250,13 +391,14 @@ export const Budgets: React.FC = () => {
               <div className="flex items-center gap-2">
                  {budget.status === 'OPEN' && (
                     <button 
-                      onClick={() => handleConvertToSale(budget)}
+                      onClick={() => handleProcessBudget(budget)}
                       className="px-4 py-2 bg-emerald-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-emerald-700 transition-all flex items-center gap-2 shadow-lg shadow-emerald-100"
-                      title="Transformar em Venda (Baixar Estoque)"
+                      title="Aprovar e Converter"
                     >
-                       <ShoppingCart size={14} /> Efetivar Venda
+                       <CheckCircle2 size={14} /> Aprovar
                     </button>
                  )}
+                 <button className="p-2 text-slate-400 hover:text-emerald-500 transition-colors" title="Enviar WhatsApp" onClick={() => handleWhatsAppShare(budget)}><Share2 size={18} /></button>
                  <button className="p-2 text-slate-400 hover:text-indigo-600 transition-colors" title="Imprimir" onClick={() => window.print()}><Printer size={18} /></button>
                  <button onClick={() => handleDeleteBudget(budget.id)} className="p-2 text-slate-400 hover:text-rose-600 transition-colors" title="Excluir"><Trash2 size={18} /></button>
               </div>
@@ -277,6 +419,13 @@ export const Budgets: React.FC = () => {
              </div>
 
              <div className="flex-1 overflow-y-auto p-8 space-y-8">
+                {linkedOsId && (
+                   <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-2xl flex items-center gap-3">
+                      <div className="p-2 bg-indigo-200 text-indigo-700 rounded-lg"><Wrench size={16}/></div>
+                      <p className="text-xs font-bold text-indigo-800">Este orçamento está vinculado à <span className="underline">O.S. #{linkedOsId}</span>. Ao aprová-lo, a O.S. será atualizada automaticamente.</p>
+                   </div>
+                )}
+
                 {/* 1. Cliente */}
                 <div className="space-y-4">
                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><User size={14} className="text-indigo-600"/> Dados do Cliente</h3>
@@ -303,14 +452,22 @@ export const Budgets: React.FC = () => {
                    </div>
                 </div>
 
-                {/* 2. Produtos */}
+                {/* 2. Produtos & Serviços */}
                 <div className="space-y-4">
-                   <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><Package size={14} className="text-indigo-600"/> Adicionar Itens</h3>
+                   <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><Package size={14} className="text-indigo-600"/> Adicionar Itens (Produtos ou Serviços)</h3>
+                   
+                   {/* Filtros de Tipo */}
+                   <div className="flex gap-2 p-1 bg-slate-100 rounded-xl w-full">
+                      <button onClick={() => setItemTypeFilter('ALL')} className={`flex-1 px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${itemTypeFilter === 'ALL' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}>Todos</button>
+                      <button onClick={() => setItemTypeFilter('PHYSICAL')} className={`flex-1 px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${itemTypeFilter === 'PHYSICAL' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}>Produtos</button>
+                      <button onClick={() => setItemTypeFilter('SERVICE')} className={`flex-1 px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${itemTypeFilter === 'SERVICE' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}>Serviços</button>
+                   </div>
+
                    <div className="relative">
                       <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                       <input 
                          type="text" 
-                         placeholder="Buscar produto para adicionar..." 
+                         placeholder="Buscar item..." 
                          className="w-full pl-12 pr-4 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none"
                          value={productSearch}
                          onChange={e => setProductSearch(e.target.value)}
@@ -319,9 +476,16 @@ export const Budgets: React.FC = () => {
                          <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-100 rounded-2xl shadow-xl z-20 max-h-60 overflow-y-auto">
                             {filteredProducts.map(p => (
                                <button key={p.id} onClick={() => addItemToBudget(p)} className="w-full flex justify-between items-center px-6 py-4 hover:bg-slate-50 border-b border-slate-50 last:border-none group">
-                                  <div className="text-left">
-                                     <p className="text-sm font-black text-slate-900 group-hover:text-indigo-600">{p.name}</p>
-                                     <p className="text-[10px] text-slate-400 uppercase">{p.sku ? `SKU: ${p.sku}` : 'Sem SKU'}</p>
+                                  <div className="text-left flex items-center gap-3">
+                                     <div className={`p-2 rounded-lg ${p.type === 'SERVICE' ? 'bg-violet-50 text-violet-600' : 'bg-indigo-50 text-indigo-600'}`}>
+                                        {p.type === 'SERVICE' ? <Zap size={16} /> : <Package size={16} />}
+                                     </div>
+                                     <div>
+                                        <p className="text-sm font-black text-slate-900 group-hover:text-indigo-600">{p.name}</p>
+                                        <p className="text-[10px] text-slate-400 uppercase">
+                                           {p.type === 'SERVICE' ? (p.estimatedDuration || 'Serviço') : (p.sku ? `SKU: ${p.sku}` : 'Produto')}
+                                        </p>
+                                     </div>
                                   </div>
                                   <span className="text-sm font-black text-emerald-600">{formatToBRL(p.salePrice)}</span>
                                </button>
@@ -330,7 +494,7 @@ export const Budgets: React.FC = () => {
                       )}
                    </div>
                    
-                   {/* Lista de Itens */}
+                   {/* Lista de Itens Adicionados */}
                    <div className="bg-slate-50 rounded-2xl p-4 space-y-2">
                       {cartItems.length === 0 && <p className="text-center text-[10px] text-slate-400 font-bold py-4 uppercase">Nenhum item adicionado</p>}
                       {cartItems.map(item => (
@@ -382,6 +546,73 @@ export const Budgets: React.FC = () => {
                 </button>
              </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE PROCESSAMENTO DE ORÇAMENTO (VENDA vs OS) */}
+      {budgetToProcess && (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
+           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => setBudgetToProcess(null)}></div>
+           <div className="relative bg-white w-full max-w-lg rounded-[3.5rem] p-10 shadow-2xl animate-in zoom-in">
+              <div className="text-center mb-10">
+                 <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">Aprovar Orçamento</h2>
+                 <p className="text-sm font-bold text-slate-500 mt-2">Como deseja processar este pedido?</p>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                 <button onClick={handleConvertToSale} className="group p-6 bg-emerald-50 rounded-[2.5rem] border border-emerald-100 hover:border-emerald-300 hover:shadow-xl transition-all text-center flex flex-col items-center gap-4">
+                    <div className="w-16 h-16 bg-white rounded-2xl text-emerald-600 flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform"><ShoppingCart size={32}/></div>
+                    <div>
+                       <h3 className="font-black text-emerald-800 text-sm uppercase tracking-wide">Gerar Venda</h3>
+                       <p className="text-[10px] text-emerald-600 font-medium mt-1 leading-tight">Baixa estoque e lança receita imediata.</p>
+                    </div>
+                 </button>
+
+                 <button onClick={handleConvertToOS} className="group p-6 bg-indigo-50 rounded-[2.5rem] border border-indigo-100 hover:border-indigo-300 hover:shadow-xl transition-all text-center flex flex-col items-center gap-4">
+                    <div className="w-16 h-16 bg-white rounded-2xl text-indigo-600 flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform"><Wrench size={32}/></div>
+                    <div>
+                       <h3 className="font-black text-indigo-800 text-sm uppercase tracking-wide">{budgetToProcess.linkedOsId ? 'Atualizar O.S.' : 'Gerar O.S.'}</h3>
+                       <p className="text-[10px] text-indigo-600 font-medium mt-1 leading-tight">{budgetToProcess.linkedOsId ? 'Aprova e atualiza a OS de entrada.' : 'Cria ordem de serviço técnica.'}</p>
+                    </div>
+                 </button>
+              </div>
+              
+              <button onClick={() => setBudgetToProcess(null)} className="w-full mt-8 py-4 text-slate-400 font-bold uppercase tracking-widest text-[10px] hover:text-slate-600">Cancelar</button>
+           </div>
+        </div>
+      )}
+
+      {/* MODAL DE SUCESSO DO ORÇAMENTO */}
+      {showSuccessModal && lastCreatedBudget && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/90 backdrop-blur-md" onClick={() => setShowSuccessModal(false)}></div>
+          <div className="relative bg-white w-full max-w-sm rounded-[4rem] p-12 text-center shadow-2xl animate-in zoom-in">
+             <div className="w-24 h-24 bg-indigo-50 text-indigo-500 rounded-[2rem] flex items-center justify-center mx-auto mb-8 shadow-inner"><FileText size={48} /></div>
+             <h2 className="text-2xl font-black text-slate-900 mb-2">Orçamento Criado!</h2>
+             <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em] mb-10">Proposta: {lastCreatedBudget.id}</p>
+             
+             {showPhoneInput ? (
+                <div className="mb-8 space-y-4 animate-in slide-in-from-bottom-2">
+                   <p className="text-xs text-slate-500 font-bold">Digite o WhatsApp do Cliente:</p>
+                   <input 
+                     type="text" 
+                     value={manualPhone}
+                     onChange={(e) => setManualPhone(e.target.value)}
+                     placeholder="(00) 00000-0000" 
+                     className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-center text-lg font-black outline-none focus:ring-2 focus:ring-emerald-500/20"
+                     autoFocus
+                   />
+                   <button onClick={() => handleWhatsAppShare()} disabled={!manualPhone} className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-xl hover:bg-emerald-700 transition-all disabled:opacity-50">Enviar Mensagem</button>
+                   <button onClick={() => setShowPhoneInput(false)} className="text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600">Cancelar Envio</button>
+                </div>
+             ) : (
+                <div className="space-y-3">
+                    <button onClick={() => window.print()} className="w-full py-5 bg-slate-900 text-white rounded-3xl font-black uppercase tracking-widest text-[10px] flex items-center justify-center gap-3 shadow-xl"><Printer size={18} /> Imprimir</button>
+                    <button onClick={() => handleWhatsAppShare()} className="w-full py-5 bg-emerald-600 text-white rounded-3xl font-black uppercase tracking-widest text-[10px] flex items-center justify-center gap-3 shadow-xl hover:bg-emerald-700 transition-all"><Share2 size={18} /> Enviar WhatsApp</button>
+                    <button onClick={() => setShowSuccessModal(false)} className="w-full py-5 bg-indigo-50 text-indigo-600 rounded-3xl font-black uppercase tracking-widest text-[10px] hover:bg-indigo-100 transition-all">Fechar</button>
+                </div>
+             )}
           </div>
         </div>
       )}

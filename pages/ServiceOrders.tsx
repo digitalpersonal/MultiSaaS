@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Search, X, CheckCircle2, Wrench, ClipboardCheck, Smartphone, Camera, Power, Volume2, Wifi, BatteryCharging, AlertTriangle, Clock, Edit2, Trash2, DollarSign, CreditCard, AlertCircle } from 'lucide-react';
+import { Plus, Search, X, CheckCircle2, Wrench, ClipboardCheck, Smartphone, Camera, Power, Volume2, Wifi, BatteryCharging, AlertTriangle, Clock, Edit2, Trash2, DollarSign, CreditCard, AlertCircle, Share2, Printer, Phone, FileText, ArrowRight, Lock, Hash } from 'lucide-react';
 import { STATUS_COLORS, STATUS_LABELS } from '../constants';
 import { OSChecklist, ServiceOrder, Customer, UserRole, Company, Transaction, OSStatus } from '../types';
 import { databaseService } from '../services/databaseService';
+import { useNavigate } from 'react-router-dom';
 
 const currencyFormatter = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const formatToBRL = (value: number) => currencyFormatter.format(value);
@@ -16,6 +17,8 @@ export const ServiceOrders: React.FC = () => {
   const TENANTS_TABLE_NAME = 'tenants';
   const FINANCE_STORAGE_KEY = 'multiplus_finance';
   const FINANCE_TABLE_NAME = 'finance';
+
+  const navigate = useNavigate();
 
   const [osList, setOsList] = useState<ServiceOrder[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -62,6 +65,9 @@ export const ServiceOrders: React.FC = () => {
   const [deviceModel, setDeviceModel] = useState('');
   const [deviceDefect, setDeviceDefect] = useState('');
   const [deviceCondition, setDeviceCondition] = useState('');
+  const [imei, setImei] = useState('');
+  const [devicePassword, setDevicePassword] = useState('');
+  
   const [editingOS, setEditingOS] = useState<ServiceOrder | null>(null);
   const [osPrice, setOsPrice] = useState('');
   const [checklist, setChecklist] = useState<OSChecklist>({
@@ -72,6 +78,12 @@ export const ServiceOrders: React.FC = () => {
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [osToFinalize, setOsToFinalize] = useState<ServiceOrder | null>(null);
   const [paymentMethod, setPaymentMethod] = useState('');
+  
+  // Modal de Sucesso (Pós-pagamento)
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [lastCompletedOS, setLastCompletedOS] = useState<ServiceOrder | null>(null);
+  const [showPhoneInput, setShowPhoneInput] = useState(false);
+  const [manualPhone, setManualPhone] = useState('');
 
   const handleOpenModal = (os?: ServiceOrder) => {
     if (os) {
@@ -81,6 +93,8 @@ export const ServiceOrders: React.FC = () => {
       setDeviceModel(os.device);
       setDeviceDefect(os.defect);
       setDeviceCondition(os.deviceCondition || '');
+      setImei(os.imei || '');
+      setDevicePassword(os.devicePassword || '');
       setChecklist(os.checklist || { power: 'NOT_TESTED', touch: 'NOT_TESTED', cameras: 'NOT_TESTED', audio: 'NOT_TESTED', wifi: 'NOT_TESTED', charging: 'NOT_TESTED' });
       setOsPrice(os.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 }));
     } else {
@@ -105,7 +119,9 @@ export const ServiceOrders: React.FC = () => {
       customerName: selectedCustomer?.name || customerSearch || 'Cliente Avulso',
       device: deviceModel,
       defect: deviceDefect,
-      status: editingOS?.status || OSStatus.AWAITING,
+      imei: imei,
+      devicePassword: devicePassword,
+      status: editingOS?.status || OSStatus.IN_ANALYSIS, // Default: Em Análise (Entrada)
       price: parseCurrencyToNumber(osPrice),
       date: editingOS?.date || new Date().toISOString(),
       checklist: checklist,
@@ -131,6 +147,11 @@ export const ServiceOrders: React.FC = () => {
       const updatedOsList = await databaseService.fetch<ServiceOrder>(OS_TABLE_NAME, OS_STORAGE_KEY);
       setOsList(updatedOsList.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
     }
+  };
+
+  const handleCreateBudgetFromOS = (os: ServiceOrder) => {
+    // Navega para a tela de Orçamentos passando os dados da OS
+    navigate('/orcamentos', { state: { osData: os } });
   };
 
   // --- Lógica de Finalização e Pagamento ---
@@ -198,11 +219,36 @@ export const ServiceOrders: React.FC = () => {
     // Atualizar UI
     const updatedOsList = await databaseService.fetch<ServiceOrder>(OS_TABLE_NAME, OS_STORAGE_KEY);
     setOsList(updatedOsList.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+    
+    setLastCompletedOS(osToFinalize);
     setIsPaymentModalOpen(false);
     setOsToFinalize(null);
     setPaymentMethod('');
+    setShowSuccessModal(true);
+    setShowPhoneInput(false);
+    setManualPhone('');
+  };
 
-    alert('Serviço concluído e pagamento registrado com sucesso!');
+  const handleWhatsAppShare = () => {
+    if (!lastCompletedOS) return;
+    
+    const customer = customers.find(c => c.id === lastCompletedOS.customerId);
+    const phoneToUse = manualPhone || customer?.phone?.replace(/\D/g, '');
+    
+    if (!phoneToUse || phoneToUse.length < 8) {
+        setShowPhoneInput(true);
+        return;
+    }
+
+    const companyName = currentCompany?.name || 'Assistência Técnica';
+    const message = `Olá ${lastCompletedOS.customerName}! 🔧\n\nSeu serviço na *${companyName}* foi concluído.\n\n*OS:* ${lastCompletedOS.id}\n*Aparelho:* ${lastCompletedOS.device}\n*Valor Final:* ${formatToBRL(lastCompletedOS.price)}\n\nObrigado pela confiança!`;
+    const url = `https://wa.me/${phoneToUse.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`;
+    
+    // Usa uma janela nomeada para evitar múltiplas abas
+    window.open(url, 'MultiplusWhatsApp'); 
+
+    setShowPhoneInput(false);
+    setManualPhone('');
   };
 
   const resetForm = () => { 
@@ -212,6 +258,8 @@ export const ServiceOrders: React.FC = () => {
     setDeviceModel(''); 
     setDeviceDefect(''); 
     setDeviceCondition(''); 
+    setImei('');
+    setDevicePassword('');
     setChecklist({ power: 'NOT_TESTED', touch: 'NOT_TESTED', cameras: 'NOT_TESTED', audio: 'NOT_TESTED', wifi: 'NOT_TESTED', charging: 'NOT_TESTED' }); 
     setOsPrice('');
   };
@@ -229,9 +277,9 @@ export const ServiceOrders: React.FC = () => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Painel de Reparos (O.S.)</h1>
-          <p className="text-slate-500 text-sm font-medium">Gestão técnica centralizada.</p>
+          <p className="text-slate-500 text-sm font-medium">Gestão técnica e entradas.</p>
         </div>
-        <button onClick={() => handleOpenModal()} className="px-6 py-3 bg-indigo-600 text-white rounded-2xl font-black shadow-lg hover:bg-indigo-700 transition-all uppercase tracking-widest text-[10px]"><Plus size={18} className="mr-2 inline" /> Abrir Protocolo</button>
+        <button onClick={() => handleOpenModal()} className="px-6 py-3 bg-indigo-600 text-white rounded-2xl font-black shadow-lg hover:bg-indigo-700 transition-all uppercase tracking-widest text-[10px]"><Plus size={18} className="mr-2 inline" /> Nova Entrada (Check-in)</button>
       </div>
 
       {osList.length === 0 ? (
@@ -253,10 +301,21 @@ export const ServiceOrders: React.FC = () => {
               <div className="mt-auto space-y-4">
                  <div className="pt-6 border-t border-slate-50 flex items-center justify-between">
                     <Clock size={16} className="text-slate-300" />
-                    <p className="text-lg font-black text-slate-900">{os.price > 0 ? formatToBRL(os.price) : 'Em Orçamento'}</p>
+                    <p className="text-lg font-black text-slate-900">{os.price > 0 ? formatToBRL(os.price) : 'Em Análise'}</p>
                  </div>
                  
-                 {os.status !== 'COMPLETED' && os.status !== 'CANCELLED' && (
+                 {/* Botão de Orçamento para OS em análise */}
+                 {(os.status === OSStatus.IN_ANALYSIS || os.status === OSStatus.AWAITING) && (
+                    <button 
+                      onClick={() => handleCreateBudgetFromOS(os)}
+                      className="w-full py-3 bg-indigo-50 text-indigo-600 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-indigo-600 hover:text-white transition-all flex items-center justify-center gap-2"
+                    >
+                       <FileText size={14} /> Gerar Orçamento
+                    </button>
+                 )}
+
+                 {/* Botão de Conclusão para OS Pronta */}
+                 {(os.status === OSStatus.WAITING_PARTS || os.status === OSStatus.IN_REPAIR) && (
                     <button 
                       onClick={() => handleOpenPaymentModal(os)}
                       className="w-full py-3 bg-emerald-50 text-emerald-600 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-emerald-600 hover:text-white transition-all flex items-center justify-center gap-2"
@@ -275,20 +334,22 @@ export const ServiceOrders: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL DE CRIAÇÃO/EDIÇÃO */}
+      {/* MODAL DE CRIAÇÃO/EDIÇÃO (CHECK-IN) */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => setIsModalOpen(false)}></div>
           <div className="relative bg-white w-full max-w-2xl rounded-[3.5rem] shadow-2xl overflow-hidden animate-in zoom-in duration-300 max-h-[95vh] flex flex-col">
              <div className="p-8 bg-slate-50/30 border-b border-slate-50 flex justify-between items-center">
-                <h2 className="text-xl font-black text-slate-900 uppercase">{editingOS ? 'Editar Protocolo Técnico' : 'Novo Protocolo Técnico'}</h2>
+                <h2 className="text-xl font-black text-slate-900 uppercase">{editingOS ? 'Editar Protocolo' : 'Entrada de Equipamento'}</h2>
                 <button onClick={() => setIsModalOpen(false)} className="p-2 text-slate-400"><X size={24} /></button>
              </div>
-             <form className="p-8 space-y-6 overflow-y-auto custom-scrollbar" onSubmit={handleCreateOrUpdateOS}>
+             <form className="p-8 space-y-8 overflow-y-auto custom-scrollbar" onSubmit={handleCreateOrUpdateOS}>
+                {/* Seção 1: Cliente */}
                 <div className="space-y-4">
+                   <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><ClipboardCheck size={14} className="text-indigo-600"/> Dados do Cliente</h3>
                    <input 
                      type="text" 
-                     placeholder="Nome do cliente..." 
+                     placeholder="Nome do cliente (Busca ou Novo)..." 
                      className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none" 
                      value={customerSearch} 
                      onChange={e => {
@@ -297,17 +358,35 @@ export const ServiceOrders: React.FC = () => {
                      }} 
                    />
                    {selectedCustomer && (
-                     <p className="text-xs text-slate-500 font-medium px-2">Cliente selecionado: {selectedCustomer.name}</p>
+                     <div className="px-4 py-2 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-xl flex items-center gap-2">
+                       <CheckCircle2 size={12} /> Cliente Identificado: {selectedCustomer.name}
+                     </div>
                    )}
-                   <input type="text" placeholder="Dispositivo (Ex: iPhone 14 Pro Max)" className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none" value={deviceModel} onChange={e => setDeviceModel(e.target.value)} required />
-                   <textarea placeholder="Relato do Defeito..." className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none resize-none" rows={3} value={deviceDefect} onChange={e => setDeviceDefect(e.target.value)} required />
-                   <input type="text" placeholder="Preço (R$)" className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none" value={osPrice} onChange={e => {
-                     const val = e.target.value.replace(/\D/g, ''); 
-                     setOsPrice((Number(val)/100).toLocaleString('pt-BR', {minimumFractionDigits: 2}));
-                   }} />
-                   
-                   <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mt-6">Checklist de Entrada</h3>
+                </div>
+
+                {/* Seção 2: Aparelho */}
+                <div className="space-y-4">
+                   <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><Smartphone size={14} className="text-indigo-600"/> Dados do Aparelho</h3>
+                   <input type="text" placeholder="Modelo (Ex: iPhone 14 Pro Max)" className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none" value={deviceModel} onChange={e => setDeviceModel(e.target.value)} required />
                    <div className="grid grid-cols-2 gap-4">
+                      <div className="relative">
+                        <Hash size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300"/>
+                        <input type="text" placeholder="IMEI / Serial" className="w-full pl-10 pr-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none" value={imei} onChange={e => setImei(e.target.value)} />
+                      </div>
+                      <div className="relative">
+                        <Lock size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300"/>
+                        <input type="text" placeholder="Senha da Tela" className="w-full pl-10 pr-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none" value={devicePassword} onChange={e => setDevicePassword(e.target.value)} />
+                      </div>
+                   </div>
+                   <textarea placeholder="Relato do Defeito (Reclamação do Cliente)..." className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none resize-none" rows={3} value={deviceDefect} onChange={e => setDeviceDefect(e.target.value)} required />
+                </div>
+                
+                {/* Seção 3: Checklist */}
+                <div className="space-y-4">
+                   <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><AlertTriangle size={14} className="text-indigo-600"/> Checklist de Entrada</h3>
+                   <input type="text" placeholder="Condição Física (Ex: Tela trincada, arranhões...)" className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none" value={deviceCondition} onChange={e => setDeviceCondition(e.target.value)} />
+                   
+                   <div className="grid grid-cols-2 gap-4 mt-4">
                      {Object.keys(checklist).map((key) => {
                        const status = checklist[key as keyof OSChecklist];
                        const Icon = {
@@ -318,26 +397,38 @@ export const ServiceOrders: React.FC = () => {
                                            status === 'NO' ? 'bg-rose-50 text-rose-600' : 'bg-slate-50 text-slate-400';
                        
                        return (
-                         <div key={key} className="flex items-center justify-between p-4 rounded-xl border border-slate-100">
+                         <div key={key} className="flex items-center justify-between p-3 rounded-xl border border-slate-100">
                            <div className="flex items-center gap-2">
-                             <Icon size={18} className="text-slate-400" />
-                             <span className="text-sm font-medium capitalize">{key.replace(/([A-Z])/g, ' $1')}</span>
+                             <Icon size={16} className="text-slate-400" />
+                             <span className="text-[10px] font-bold capitalize">{key.replace(/([A-Z])/g, ' $1')}</span>
                            </div>
                            <select 
                              value={status} 
                              onChange={(e) => setChecklist(prev => ({ ...prev, [key]: e.target.value as 'YES' | 'NO' | 'NOT_TESTED' }))}
-                             className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${statusColor} appearance-none cursor-pointer outline-none`}
+                             className={`px-2 py-1 rounded-full text-[9px] font-black uppercase ${statusColor} appearance-none cursor-pointer outline-none border-none`}
                            >
-                             <option value="NOT_TESTED">NÃO TESTADO</option>
-                             <option value="YES">SIM</option>
-                             <option value="NO">NÃO</option>
+                             <option value="NOT_TESTED">N/A</option>
+                             <option value="YES">OK</option>
+                             <option value="NO">FALHA</option>
                            </select>
                          </div>
                        );
                      })}
                    </div>
                 </div>
-                <button type="submit" className="w-full py-5 bg-indigo-600 text-white rounded-[2rem] font-black uppercase tracking-widest text-xs shadow-xl hover:bg-indigo-700 transition-all">{editingOS ? 'Atualizar Ordem de Serviço' : 'Abrir Ordem de Serviço'}</button>
+
+                {/* Seção 4: Valor (Opcional na Entrada) */}
+                <div className="space-y-4 pt-4 border-t border-slate-50">
+                    <div className="flex justify-between items-center">
+                        <label className="text-xs font-black text-slate-400 uppercase">Orçamento Inicial (Opcional)</label>
+                        <input type="text" placeholder="R$ 0,00" className="w-32 px-4 py-2 bg-slate-50 border-none rounded-xl text-right text-sm font-black outline-none" value={osPrice} onChange={e => {
+                            const val = e.target.value.replace(/\D/g, ''); 
+                            setOsPrice((Number(val)/100).toLocaleString('pt-BR', {minimumFractionDigits: 2}));
+                        }} />
+                    </div>
+                </div>
+
+                <button type="submit" className="w-full py-5 bg-indigo-600 text-white rounded-[2rem] font-black uppercase tracking-widest text-xs shadow-xl hover:bg-indigo-700 transition-all">{editingOS ? 'Salvar Alterações' : 'Confirmar Entrada'}</button>
              </form>
           </div>
         </div>
@@ -393,6 +484,40 @@ export const ServiceOrders: React.FC = () => {
                    Confirmar Pagamento
                 </button>
              </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE SUCESSO */}
+      {showSuccessModal && lastCompletedOS && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/90 backdrop-blur-md" onClick={() => setShowSuccessModal(false)}></div>
+          <div className="relative bg-white w-full max-w-sm rounded-[4rem] p-12 text-center shadow-2xl animate-in zoom-in">
+             <div className="w-24 h-24 bg-emerald-50 text-emerald-500 rounded-[2rem] flex items-center justify-center mx-auto mb-8 shadow-inner"><CheckCircle2 size={48} /></div>
+             <h2 className="text-2xl font-black text-slate-900 mb-2">Serviço Concluído!</h2>
+             <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em] mb-10">OS #{lastCompletedOS.id}</p>
+             
+             {showPhoneInput ? (
+                <div className="mb-8 space-y-4 animate-in slide-in-from-bottom-2">
+                   <p className="text-xs text-slate-500 font-bold">Digite o WhatsApp do Cliente:</p>
+                   <input 
+                     type="text" 
+                     value={manualPhone}
+                     onChange={(e) => setManualPhone(e.target.value)}
+                     placeholder="(00) 00000-0000" 
+                     className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-center text-lg font-black outline-none focus:ring-2 focus:ring-emerald-500/20"
+                     autoFocus
+                   />
+                   <button onClick={handleWhatsAppShare} disabled={!manualPhone} className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-xl hover:bg-emerald-700 transition-all disabled:opacity-50">Enviar Mensagem</button>
+                   <button onClick={() => setShowPhoneInput(false)} className="text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600">Cancelar Envio</button>
+                </div>
+             ) : (
+                <div className="space-y-3">
+                    <button onClick={() => window.print()} className="w-full py-5 bg-slate-900 text-white rounded-3xl font-black uppercase tracking-widest text-[10px] flex items-center justify-center gap-3 shadow-xl"><Printer size={18} /> Imprimir Recibo</button>
+                    <button onClick={handleWhatsAppShare} className="w-full py-5 bg-emerald-600 text-white rounded-3xl font-black uppercase tracking-widest text-[10px] flex items-center justify-center gap-3 shadow-xl hover:bg-emerald-700 transition-all"><Share2 size={18} /> Enviar WhatsApp</button>
+                    <button onClick={() => setShowSuccessModal(false)} className="w-full py-5 bg-indigo-50 text-indigo-600 rounded-3xl font-black uppercase tracking-widest text-[10px] hover:bg-indigo-100 transition-all">Fechar</button>
+                </div>
+             )}
           </div>
         </div>
       )}

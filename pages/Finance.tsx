@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { DollarSign, ArrowUpCircle, ArrowDownCircle, Plus, Search, X, TrendingUp, BarChart3, FileText, CheckCircle2, Calendar, Printer, Filter, PieChart, AlertTriangle, Tag, Settings2, Trash2, CalendarDays, Clock, CreditCard } from 'lucide-react';
+import { DollarSign, ArrowUpCircle, ArrowDownCircle, Plus, Search, X, TrendingUp, BarChart3, FileText, CheckCircle2, Calendar, Printer, Filter, PieChart, AlertTriangle, Tag, Settings2, Trash2, CalendarDays, Clock, CreditCard, Edit2 } from 'lucide-react';
 import { databaseService } from '../services/databaseService';
 import { Transaction as TransactionType, UserRole, FinanceCategory, Company } from '../types';
 
@@ -95,6 +95,7 @@ export const Finance: React.FC = () => {
 
   // Category Manager States
   const [newCategoryName, setNewCategoryName] = useState('');
+  const [editingCategory, setEditingCategory] = useState<FinanceCategory | null>(null);
 
   // Helper para simular taxa
   const getSimulatedFee = () => {
@@ -273,18 +274,22 @@ export const Finance: React.FC = () => {
     setTrDate(new Date().toISOString().split('T')[0]);
   };
 
-  const handleCreateCategory = async (e: React.FormEvent) => {
+  const handleSaveCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!companyId || !newCategoryName.trim()) return;
 
-    const newCat: FinanceCategory = {
-      id: `CAT-${Date.now()}`,
-      companyId,
-      name: newCategoryName,
-      type: trType // Usa o tipo selecionado no modal
-    };
-
-    await databaseService.insertOne<FinanceCategory>(CATEGORIES_TABLE_NAME, CATEGORIES_STORAGE_KEY, newCat);
+    if (editingCategory) {
+       await databaseService.updateOne<FinanceCategory>(CATEGORIES_TABLE_NAME, CATEGORIES_STORAGE_KEY, editingCategory.id, { name: newCategoryName });
+       setEditingCategory(null);
+    } else {
+       const newCat: FinanceCategory = {
+         id: `CAT-${Date.now()}`,
+         companyId,
+         name: newCategoryName,
+         type: trType
+       };
+       await databaseService.insertOne<FinanceCategory>(CATEGORIES_TABLE_NAME, CATEGORIES_STORAGE_KEY, newCat);
+    }
     
     const updatedCats = await databaseService.fetch<FinanceCategory>(CATEGORIES_TABLE_NAME, CATEGORIES_STORAGE_KEY);
     setCategories(updatedCats);
@@ -296,7 +301,21 @@ export const Finance: React.FC = () => {
       await databaseService.deleteOne<FinanceCategory>(CATEGORIES_TABLE_NAME, CATEGORIES_STORAGE_KEY, id);
       const updatedCats = await databaseService.fetch<FinanceCategory>(CATEGORIES_TABLE_NAME, CATEGORIES_STORAGE_KEY);
       setCategories(updatedCats);
+      if (editingCategory?.id === id) {
+          setEditingCategory(null);
+          setNewCategoryName('');
+      }
     }
+  };
+
+  const startEditingCategory = (cat: FinanceCategory) => {
+    setEditingCategory(cat);
+    setNewCategoryName(cat.name);
+  };
+
+  const cancelEditingCategory = () => {
+    setEditingCategory(null);
+    setNewCategoryName('');
   };
 
   const handlePrint = () => {
@@ -320,7 +339,7 @@ export const Finance: React.FC = () => {
           <p className="text-slate-500 text-sm font-medium">Fechamento de caixa, DRE e fluxo de caixa.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-           <button onClick={() => { setTrType('EXPENSE'); setIsCategoryManagerOpen(true); }} className="px-4 py-3 bg-white text-slate-600 border border-slate-200 rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-sm flex items-center gap-2 hover:bg-slate-50 transition-all">
+           <button onClick={() => { setTrType('EXPENSE'); setIsCategoryManagerOpen(true); cancelEditingCategory(); }} className="px-4 py-3 bg-white text-slate-600 border border-slate-200 rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-sm flex items-center gap-2 hover:bg-slate-50 transition-all">
               <Settings2 size={16} /> Categorias
            </button>
            <button onClick={handlePrint} className="px-6 py-3 bg-slate-900 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-lg flex items-center gap-2 hover:bg-slate-800 transition-all">
@@ -586,23 +605,26 @@ export const Finance: React.FC = () => {
       {/* MODAL DE GERENCIAR CATEGORIAS */}
       {isCategoryManagerOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 no-print">
-           <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-md" onClick={() => setIsCategoryManagerOpen(false)}></div>
+           <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-md" onClick={() => { setIsCategoryManagerOpen(false); cancelEditingCategory(); }}></div>
            <div className="relative bg-white w-full max-w-lg rounded-[3.5rem] p-10 shadow-2xl animate-in zoom-in max-h-[80vh] flex flex-col">
               <div className="flex justify-between items-center mb-6">
                  <h2 className="text-xl font-black text-slate-900 uppercase">Gerenciar Categorias</h2>
-                 <button onClick={() => setIsCategoryManagerOpen(false)} className="text-slate-400 hover:text-rose-600"><X size={24}/></button>
+                 <button onClick={() => { setIsCategoryManagerOpen(false); cancelEditingCategory(); }} className="text-slate-400 hover:text-rose-600"><X size={24}/></button>
               </div>
 
               <div className="flex gap-2 p-1.5 bg-slate-100 rounded-2xl mb-6 shrink-0">
-                   <button type="button" onClick={() => setTrType('INCOME')} className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${trType === 'INCOME' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400'}`}>Receitas</button>
-                   <button type="button" onClick={() => setTrType('EXPENSE')} className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${trType === 'EXPENSE' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-400'}`}>Despesas</button>
+                   <button type="button" onClick={() => { setTrType('INCOME'); cancelEditingCategory(); }} className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${trType === 'INCOME' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400'}`}>Receitas</button>
+                   <button type="button" onClick={() => { setTrType('EXPENSE'); cancelEditingCategory(); }} className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${trType === 'EXPENSE' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-400'}`}>Despesas</button>
               </div>
 
               <div className="overflow-y-auto flex-1 mb-6 pr-2 custom-scrollbar space-y-2">
                  {categories.filter(c => c.type === trType).map(cat => (
-                   <div key={cat.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 group">
-                      <span className="text-sm font-bold text-slate-700">{cat.name}</span>
-                      <button onClick={() => handleDeleteCategory(cat.id)} className="p-2 text-slate-300 hover:text-rose-600 transition-colors"><Trash2 size={16}/></button>
+                   <div key={cat.id} className={`flex items-center justify-between p-4 rounded-2xl border transition-all group ${editingCategory?.id === cat.id ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-slate-100'}`}>
+                      <span className={`text-sm font-bold ${editingCategory?.id === cat.id ? 'text-indigo-700' : 'text-slate-700'}`}>{cat.name}</span>
+                      <div className="flex gap-1">
+                        <button onClick={() => startEditingCategory(cat)} className="p-2 text-slate-300 hover:text-indigo-600 transition-colors"><Edit2 size={16}/></button>
+                        <button onClick={() => handleDeleteCategory(cat.id)} className="p-2 text-slate-300 hover:text-rose-600 transition-colors"><Trash2 size={16}/></button>
+                      </div>
                    </div>
                  ))}
                  {categories.filter(c => c.type === trType).length === 0 && (
@@ -610,11 +632,20 @@ export const Finance: React.FC = () => {
                  )}
               </div>
 
-              <form onSubmit={handleCreateCategory} className="shrink-0 pt-6 border-t border-slate-100">
-                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Nova Categoria de {trType === 'INCOME' ? 'Receita' : 'Despesa'}</label>
+              <form onSubmit={handleSaveCategory} className="shrink-0 pt-6 border-t border-slate-100">
+                 <div className="flex justify-between items-center mb-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block ml-1">
+                        {editingCategory ? 'Editando Categoria' : `Nova Categoria de ${trType === 'INCOME' ? 'Receita' : 'Despesa'}`}
+                    </label>
+                    {editingCategory && (
+                        <button type="button" onClick={cancelEditingCategory} className="text-[10px] font-bold text-rose-500 hover:text-rose-700 uppercase">Cancelar</button>
+                    )}
+                 </div>
                  <div className="flex gap-3">
                    <input type="text" value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)} className="flex-1 px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none" placeholder="Digite o nome..." required />
-                   <button type="submit" className="px-6 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest shadow-lg hover:bg-black transition-all"><Plus size={20} /></button>
+                   <button type="submit" className={`px-6 py-4 text-white rounded-2xl font-black uppercase tracking-widest shadow-lg transition-all ${editingCategory ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-slate-900 hover:bg-black'}`}>
+                      {editingCategory ? <CheckCircle2 size={20} /> : <Plus size={20} />}
+                   </button>
                  </div>
               </form>
            </div>
