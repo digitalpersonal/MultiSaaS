@@ -171,6 +171,15 @@ export const Budgets: React.FC = () => {
     };
 
     await databaseService.insertOne<Budget>(BUDGET_TABLE_NAME, BUDGET_STORAGE_KEY, newBudget);
+
+    // SE ESTIVER VINCULADO A UMA OS, ATUALIZA A OS PARA "ORÇAMENTO PENDENTE"
+    if (linkedOsId) {
+        await databaseService.updateOne<ServiceOrder>(OS_TABLE_NAME, OS_STORAGE_KEY, linkedOsId, {
+            status: OSStatus.BUDGET_PENDING,
+            price: totalValue
+        });
+    }
+
     const updatedBudgets = await databaseService.fetch<Budget>(BUDGET_TABLE_NAME, BUDGET_STORAGE_KEY);
     setBudgets(updatedBudgets.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
     
@@ -247,17 +256,23 @@ export const Budgets: React.FC = () => {
 
     const itemsDescription = budgetToProcess.items.map(i => `${i.quantity}x ${i.name}`).join(', ');
 
-    // Se já existe uma OS vinculada, atualizamos ela
+    // Se já existe uma OS vinculada, atualizamos ela para IN_REPAIR (Aprovado)
     if (budgetToProcess.linkedOsId) {
+        // Busca a OS atual para preservar informações
+        const currentOS = await databaseService.fetch<ServiceOrder>(OS_TABLE_NAME, OS_STORAGE_KEY);
+        const targetOS = currentOS.find(o => o.id === budgetToProcess.linkedOsId);
+        
+        const currentDefect = targetOS?.defect || '';
+        
         await databaseService.updateOne<ServiceOrder>(OS_TABLE_NAME, OS_STORAGE_KEY, budgetToProcess.linkedOsId, {
-            status: OSStatus.WAITING_PARTS, // Ou IN_REPAIR
+            status: OSStatus.IN_REPAIR, // MUDANÇA: Agora vai para Execução (Bancada)
             price: budgetToProcess.finalValue,
-            defect: `${budgetToProcess.notes || ''}. Aprovado: ${itemsDescription}`
+            defect: `${currentDefect} || APROVADO: ${itemsDescription}`
         });
-        alert(`A O.S. de origem (#${budgetToProcess.linkedOsId}) foi atualizada com os valores e itens aprovados!`);
+        alert(`O Orçamento foi APROVADO! A O.S. #${budgetToProcess.linkedOsId} agora está na Bancada do Técnico.`);
         navigate('/servicos');
     } else {
-        // Se não, cria uma nova
+        // Se não, cria uma nova OS já na Bancada
         const newOS: ServiceOrder = {
             id: `OS-${Date.now().toString().slice(-5)}`,
             companyId,
@@ -265,14 +280,14 @@ export const Budgets: React.FC = () => {
             customerName: budgetToProcess.customerName,
             device: 'Equipamento do Orçamento',
             defect: `Itens Aprovados: ${itemsDescription}. ${budgetToProcess.notes || ''}`,
-            status: OSStatus.AWAITING,
+            status: OSStatus.IN_REPAIR, // Já entra em execução
             price: budgetToProcess.finalValue,
             date: new Date().toISOString(),
             checklist: { power: 'NOT_TESTED', touch: 'NOT_TESTED', cameras: 'NOT_TESTED', audio: 'NOT_TESTED', wifi: 'NOT_TESTED', charging: 'NOT_TESTED' },
             deviceCondition: 'Vindo de Orçamento Aprovado',
         };
         await databaseService.insertOne<ServiceOrder>(OS_TABLE_NAME, OS_STORAGE_KEY, newOS);
-        alert('Nova Ordem de Serviço criada com sucesso! Acesse o módulo de Serviços para gerenciar.');
+        alert('Orçamento Aprovado! Nova Ordem de Serviço criada na Bancada.');
         navigate('/servicos');
     }
 
@@ -297,7 +312,8 @@ export const Budgets: React.FC = () => {
     }
 
     const companyName = currentCompany?.name || 'Nossa Loja';
-    const message = `Olá ${targetBudget.customerName}! 📄\n\nSegue o orçamento solicitado na *${companyName}*.\n\n*Orçamento:* ${targetBudget.id}\n*Total:* ${formatToBRL(targetBudget.finalValue)}\n*Validade:* ${new Date(targetBudget.validUntil).toLocaleDateString()}\n\nAguardamos seu retorno!`;
+    const message = `Olá ${targetBudget.customerName}! 📄\n\nSegue a proposta de orçamento da *${companyName}*.\n\n*Orçamento:* ${targetBudget.id}\n*Total:* ${formatToBRL(targetBudget.finalValue)}\n*Validade:* ${new Date(targetBudget.validUntil).toLocaleDateString()}\n\nItens:\n${targetBudget.items.map(i => `- ${i.quantity}x ${i.name}`).join('\n')}\n\nAguardamos sua aprovação para iniciar o serviço!`;
+    
     const url = `https://wa.me/${phoneToUse.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`;
     
     // Usa uma janela nomeada para evitar múltiplas abas
@@ -572,8 +588,8 @@ export const Budgets: React.FC = () => {
                  <button onClick={handleConvertToOS} className="group p-6 bg-indigo-50 rounded-[2.5rem] border border-indigo-100 hover:border-indigo-300 hover:shadow-xl transition-all text-center flex flex-col items-center gap-4">
                     <div className="w-16 h-16 bg-white rounded-2xl text-indigo-600 flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform"><Wrench size={32}/></div>
                     <div>
-                       <h3 className="font-black text-indigo-800 text-sm uppercase tracking-wide">{budgetToProcess.linkedOsId ? 'Atualizar O.S.' : 'Gerar O.S.'}</h3>
-                       <p className="text-[10px] text-indigo-600 font-medium mt-1 leading-tight">{budgetToProcess.linkedOsId ? 'Aprova e atualiza a OS de entrada.' : 'Cria ordem de serviço técnica.'}</p>
+                       <h3 className="font-black text-indigo-800 text-sm uppercase tracking-wide">{budgetToProcess.linkedOsId ? 'Aprovar O.S.' : 'Gerar O.S.'}</h3>
+                       <p className="text-[10px] text-indigo-600 font-medium mt-1 leading-tight">{budgetToProcess.linkedOsId ? 'Aprova e envia O.S. para a bancada.' : 'Cria ordem de serviço técnica.'}</p>
                     </div>
                  </button>
               </div>

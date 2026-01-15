@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Search, X, CheckCircle2, Wrench, ClipboardCheck, Smartphone, Camera, Power, Volume2, Wifi, BatteryCharging, AlertTriangle, Clock, Edit2, Trash2, DollarSign, CreditCard, AlertCircle, Share2, Printer, Phone, FileText, ArrowRight, Lock, Hash } from 'lucide-react';
+import { Plus, Search, X, CheckCircle2, Wrench, ClipboardCheck, Smartphone, Camera, Power, Volume2, Wifi, BatteryCharging, AlertTriangle, Clock, Edit2, Trash2, DollarSign, CreditCard, AlertCircle, Share2, Printer, Phone, FileText, ArrowRight, Lock, Hash, Package, Monitor, History, Settings, FileQuestion } from 'lucide-react';
 import { STATUS_COLORS, STATUS_LABELS } from '../constants';
 import { OSChecklist, ServiceOrder, Customer, UserRole, Company, Transaction, OSStatus } from '../types';
 import { databaseService } from '../services/databaseService';
@@ -24,6 +24,9 @@ export const ServiceOrders: React.FC = () => {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [currentCompany, setCurrentCompany] = useState<Company | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Controle de Abas (Fluxo de Trabalho Rigoroso)
+  const [activeTab, setActiveTab] = useState<'TRIAGE' | 'BUDGET_WAIT' | 'LAB' | 'HISTORY'>('TRIAGE');
 
   const getCurrentCompanyId = (): string | undefined => {
     const userString = localStorage.getItem('multiplus_user');
@@ -56,8 +59,6 @@ export const ServiceOrders: React.FC = () => {
     loadData();
   }, [companyId]);
 
-  const [filter, setFilter] = useState('ALL');
-  
   // Modal de Criação/Edição
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [customerSearch, setCustomerSearch] = useState('');
@@ -67,6 +68,7 @@ export const ServiceOrders: React.FC = () => {
   const [deviceCondition, setDeviceCondition] = useState('');
   const [imei, setImei] = useState('');
   const [devicePassword, setDevicePassword] = useState('');
+  const [accessories, setAccessories] = useState('');
   
   const [editingOS, setEditingOS] = useState<ServiceOrder | null>(null);
   const [osPrice, setOsPrice] = useState('');
@@ -79,9 +81,10 @@ export const ServiceOrders: React.FC = () => {
   const [osToFinalize, setOsToFinalize] = useState<ServiceOrder | null>(null);
   const [paymentMethod, setPaymentMethod] = useState('');
   
-  // Modal de Sucesso (Pós-pagamento)
+  // Modal de Sucesso
   const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [lastCompletedOS, setLastCompletedOS] = useState<ServiceOrder | null>(null);
+  const [lastProcessedOS, setLastProcessedOS] = useState<ServiceOrder | null>(null);
+  const [successMode, setSuccessMode] = useState<'ENTRY' | 'COMPLETION'>('ENTRY'); 
   const [showPhoneInput, setShowPhoneInput] = useState(false);
   const [manualPhone, setManualPhone] = useState('');
 
@@ -95,6 +98,7 @@ export const ServiceOrders: React.FC = () => {
       setDeviceCondition(os.deviceCondition || '');
       setImei(os.imei || '');
       setDevicePassword(os.devicePassword || '');
+      setAccessories(os.accessories || '');
       setChecklist(os.checklist || { power: 'NOT_TESTED', touch: 'NOT_TESTED', cameras: 'NOT_TESTED', audio: 'NOT_TESTED', wifi: 'NOT_TESTED', charging: 'NOT_TESTED' });
       setOsPrice(os.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 }));
     } else {
@@ -121,6 +125,7 @@ export const ServiceOrders: React.FC = () => {
       defect: deviceDefect,
       imei: imei,
       devicePassword: devicePassword,
+      accessories: accessories,
       status: editingOS?.status || OSStatus.IN_ANALYSIS, // Default: Em Análise (Entrada)
       price: parseCurrencyToNumber(osPrice),
       date: editingOS?.date || new Date().toISOString(),
@@ -138,6 +143,14 @@ export const ServiceOrders: React.FC = () => {
     setOsList(updatedOsList.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
     
     setIsModalOpen(false);
+    
+    // Se for uma NOVA entrada, abre o modal de Recibo de Entrada
+    if (!editingOS) {
+        setLastProcessedOS(osData);
+        setSuccessMode('ENTRY');
+        setShowSuccessModal(true);
+    }
+    
     resetForm();
   };
 
@@ -153,6 +166,10 @@ export const ServiceOrders: React.FC = () => {
     // Navega para a tela de Orçamentos passando os dados da OS
     navigate('/orcamentos', { state: { osData: os } });
   };
+
+  const handleGoToBudgets = () => {
+    navigate('/orcamentos');
+  }
 
   // --- Lógica de Finalização e Pagamento ---
 
@@ -220,7 +237,8 @@ export const ServiceOrders: React.FC = () => {
     const updatedOsList = await databaseService.fetch<ServiceOrder>(OS_TABLE_NAME, OS_STORAGE_KEY);
     setOsList(updatedOsList.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
     
-    setLastCompletedOS(osToFinalize);
+    setLastProcessedOS(osToFinalize);
+    setSuccessMode('COMPLETION');
     setIsPaymentModalOpen(false);
     setOsToFinalize(null);
     setPaymentMethod('');
@@ -229,26 +247,64 @@ export const ServiceOrders: React.FC = () => {
     setManualPhone('');
   };
 
-  const handleWhatsAppShare = () => {
-    if (!lastCompletedOS) return;
+  const handleWhatsAppShare = (osParam?: ServiceOrder, type?: 'ENTRY' | 'COMPLETION') => {
+    const targetOS = osParam || lastProcessedOS;
+    const mode = type || successMode;
+
+    if (!targetOS) return;
     
-    const customer = customers.find(c => c.id === lastCompletedOS.customerId);
+    const customer = customers.find(c => c.id === targetOS.customerId);
     const phoneToUse = manualPhone || customer?.phone?.replace(/\D/g, '');
     
     if (!phoneToUse || phoneToUse.length < 8) {
-        setShowPhoneInput(true);
+        if (!osParam) setShowPhoneInput(true); // Só mostra o input se for via modal de sucesso
+        else alert("Cliente sem telefone cadastrado. Por favor, edite o cadastro ou use a opção via modal.");
         return;
     }
 
     const companyName = currentCompany?.name || 'Assistência Técnica';
-    const message = `Olá ${lastCompletedOS.customerName}! 🔧\n\nSeu serviço na *${companyName}* foi concluído.\n\n*OS:* ${lastCompletedOS.id}\n*Aparelho:* ${lastCompletedOS.device}\n*Valor Final:* ${formatToBRL(lastCompletedOS.price)}\n\nObrigado pela confiança!`;
-    const url = `https://wa.me/${phoneToUse.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`;
     
-    // Usa uma janela nomeada para evitar múltiplas abas
+    let message = '';
+    if (mode === 'ENTRY') {
+        const checklistItems = targetOS.checklist ? Object.entries(targetOS.checklist)
+            .filter(([_, val]) => val !== 'NOT_TESTED')
+            .map(([key, val]) => `${key === 'power' ? 'Liga' : key}: ${val === 'YES' ? 'OK' : 'Falha'}`)
+            .join(', ') : '';
+
+        message = `*COMPROVANTE DE ENTRADA - ${companyName}*\n\n` +
+                  `Olá *${targetOS.customerName}*! 👋\n` +
+                  `Recebemos seu aparelho para análise.\n\n` +
+                  `📋 *Protocolo:* ${targetOS.id}\n` +
+                  `📱 *Aparelho:* ${targetOS.device}\n` +
+                  `⚠️ *Defeito:* ${targetOS.defect}\n` +
+                  `📦 *Acessórios:* ${targetOS.accessories || 'Nenhum'}\n` +
+                  (checklistItems ? `🔍 *Checklist:* ${checklistItems}\n` : '') +
+                  `\n⏳ *Status:* Em Análise Técnica\n` +
+                  `Assim que tivermos o diagnóstico e orçamento, entraremos em contato!\n\n` +
+                  `Obrigado pela preferência!`;
+    } else {
+        message = `*AVISO DE CONCLUSÃO - ${companyName}*\n\n` +
+                  `Olá *${targetOS.customerName}*! ✅\n` +
+                  `Seu aparelho está pronto para retirada!\n\n` +
+                  `🛠️ *OS:* ${targetOS.id}\n` +
+                  `📱 *Aparelho:* ${targetOS.device}\n` +
+                  `💰 *Valor Final:* ${formatToBRL(targetOS.price)}\n\n` +
+                  `Pode vir buscar quando quiser. Obrigado pela confiança!`;
+    }
+
+    const url = `https://wa.me/${phoneToUse.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`;
     window.open(url, 'MultiplusWhatsApp'); 
 
     setShowPhoneInput(false);
     setManualPhone('');
+  };
+
+  const handlePrintReceipt = (os: ServiceOrder) => {
+    // Em uma aplicação real, isso geraria um PDF ou abriria uma janela de impressão formatada.
+    // Aqui usamos o window.print() básico, mas configuramos os dados no modal de sucesso para que a impressão pegue o contexto.
+    setLastProcessedOS(os);
+    setSuccessMode(os.status === OSStatus.COMPLETED ? 'COMPLETION' : 'ENTRY');
+    setTimeout(() => window.print(), 100);
   };
 
   const resetForm = () => { 
@@ -260,9 +316,27 @@ export const ServiceOrders: React.FC = () => {
     setDeviceCondition(''); 
     setImei('');
     setDevicePassword('');
+    setAccessories('');
     setChecklist({ power: 'NOT_TESTED', touch: 'NOT_TESTED', cameras: 'NOT_TESTED', audio: 'NOT_TESTED', wifi: 'NOT_TESTED', charging: 'NOT_TESTED' }); 
     setOsPrice('');
   };
+
+  // Filtragem baseada nas Abas (Fluxo Rigoroso)
+  const filteredOS = useMemo(() => {
+    if (activeTab === 'TRIAGE') {
+        // Entrada (Recepção) - Apenas Em Análise ou Aguardando
+        return osList.filter(os => os.status === OSStatus.IN_ANALYSIS || os.status === OSStatus.AWAITING);
+    } else if (activeTab === 'BUDGET_WAIT') {
+        // Orçamento Feito - Aguardando Cliente Aprovar
+        return osList.filter(os => os.status === OSStatus.BUDGET_PENDING);
+    } else if (activeTab === 'LAB') {
+        // Aprovado - Em Execução (Bancada)
+        return osList.filter(os => os.status === OSStatus.WAITING_PARTS || os.status === OSStatus.IN_REPAIR);
+    } else {
+        // Saída - Finalizados
+        return osList.filter(os => os.status === OSStatus.COMPLETED || os.status === OSStatus.CANCELLED);
+    }
+  }, [osList, activeTab]);
 
   if (isLoading) {
     return (
@@ -276,21 +350,46 @@ export const ServiceOrders: React.FC = () => {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Painel de Reparos (O.S.)</h1>
-          <p className="text-slate-500 text-sm font-medium">Gestão técnica e entradas.</p>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Centro de Serviços</h1>
+          <p className="text-slate-500 text-sm font-medium">Gestão de Entrada, Orçamento e Execução.</p>
         </div>
-        <button onClick={() => handleOpenModal()} className="px-6 py-3 bg-indigo-600 text-white rounded-2xl font-black shadow-lg hover:bg-indigo-700 transition-all uppercase tracking-widest text-[10px]"><Plus size={18} className="mr-2 inline" /> Nova Entrada (Check-in)</button>
+        <button onClick={() => { setActiveTab('TRIAGE'); handleOpenModal(); }} className="px-6 py-3 bg-indigo-600 text-white rounded-2xl font-black shadow-lg hover:bg-indigo-700 transition-all uppercase tracking-widest text-[10px] flex items-center gap-2"><Plus size={18} /> Nova Entrada (Recebimento)</button>
       </div>
 
-      {osList.length === 0 ? (
+      {/* Abas de Navegação - FLUXO RIGOROSO */}
+      <div className="bg-white p-2 rounded-[2rem] border border-slate-100 shadow-sm flex overflow-x-auto gap-1">
+        <button onClick={() => setActiveTab('TRIAGE')} className={`flex-1 min-w-[120px] py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${activeTab === 'TRIAGE' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}>
+            <ClipboardCheck size={16} /> 1. Recepção
+        </button>
+        <button onClick={() => setActiveTab('BUDGET_WAIT')} className={`flex-1 min-w-[120px] py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${activeTab === 'BUDGET_WAIT' ? 'bg-violet-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}>
+            <FileQuestion size={16} /> 2. Aguardando Aprovação
+        </button>
+        <button onClick={() => setActiveTab('LAB')} className={`flex-1 min-w-[120px] py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${activeTab === 'LAB' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}>
+            <Wrench size={16} /> 3. Bancada (Execução)
+        </button>
+        <button onClick={() => setActiveTab('HISTORY')} className={`flex-1 min-w-[120px] py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${activeTab === 'HISTORY' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}>
+            <History size={16} /> 4. Saída
+        </button>
+      </div>
+
+      {filteredOS.length === 0 ? (
         <div className="py-32 text-center bg-white rounded-[3rem] border border-slate-100">
            <Smartphone size={64} className="mx-auto text-slate-100 mb-6" />
-           <h3 className="text-xl font-black text-slate-400 uppercase tracking-widest">Nenhuma O.S. ativa</h3>
+           <h3 className="text-xl font-black text-slate-400 uppercase tracking-widest">
+               {activeTab === 'TRIAGE' ? 'Nenhum aparelho na recepção' : 
+                activeTab === 'BUDGET_WAIT' ? 'Nenhum orçamento pendente' :
+                activeTab === 'LAB' ? 'Bancada vazia' : 'Histórico vazio'}
+           </h3>
+           <p className="text-xs text-slate-400 mt-2 font-medium">
+              {activeTab === 'TRIAGE' ? 'Registre uma nova entrada para começar.' : 
+               activeTab === 'BUDGET_WAIT' ? 'Faça orçamentos na aba Recepção.' :
+               activeTab === 'LAB' ? 'Aprove orçamentos para enviar para bancada.' : ''}
+           </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {osList.filter(os => filter === 'ALL' || os.status === filter).map((os) => (
-            <div key={os.id} className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm p-8 flex flex-col hover:shadow-xl transition-all relative group">
+          {filteredOS.map((os) => (
+            <div key={os.id} className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm p-8 flex flex-col hover:shadow-xl transition-all relative group animate-in zoom-in duration-300">
               <div className="flex items-center justify-between mb-4">
                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{os.id}</span>
                 <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${STATUS_COLORS[os.status as any]}`}>{STATUS_LABELS[os.status]}</span>
@@ -299,29 +398,61 @@ export const ServiceOrders: React.FC = () => {
               <p className="text-[10px] text-slate-500 mb-6 font-bold uppercase tracking-widest">{os.customerName}</p>
               
               <div className="mt-auto space-y-4">
-                 <div className="pt-6 border-t border-slate-50 flex items-center justify-between">
+                 {/* Exibe defeito na triagem */}
+                 {activeTab === 'TRIAGE' && (
+                    <div className="p-3 bg-slate-50 rounded-xl">
+                        <p className="text-[10px] text-slate-400 font-bold uppercase">Defeito Relatado</p>
+                        <p className="text-xs text-slate-700 font-medium line-clamp-2">{os.defect}</p>
+                    </div>
+                 )}
+
+                 <div className="pt-4 border-t border-slate-50 flex items-center justify-between">
                     <Clock size={16} className="text-slate-300" />
-                    <p className="text-lg font-black text-slate-900">{os.price > 0 ? formatToBRL(os.price) : 'Em Análise'}</p>
+                    <p className="text-lg font-black text-slate-900">{os.price > 0 ? formatToBRL(os.price) : 'Sob Análise'}</p>
                  </div>
                  
-                 {/* Botão de Orçamento para OS em análise */}
-                 {(os.status === OSStatus.IN_ANALYSIS || os.status === OSStatus.AWAITING) && (
+                 {/* AÇÕES DA ETAPA 1: RECEPÇÃO */}
+                 {activeTab === 'TRIAGE' && (
+                    <div className="space-y-2">
+                       <button 
+                         onClick={() => handleCreateBudgetFromOS(os)}
+                         className="w-full py-3 bg-blue-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-200"
+                       >
+                          <FileText size={14} /> Fazer Orçamento
+                       </button>
+                       <div className="flex gap-2">
+                          <button onClick={() => handleWhatsAppShare(os, 'ENTRY')} className="flex-1 py-2 bg-emerald-50 text-emerald-600 rounded-xl font-bold text-[9px] uppercase hover:bg-emerald-100 flex items-center justify-center gap-1" title="Enviar Comprovante Entrada"><Share2 size={12}/> Whats</button>
+                          <button onClick={() => handlePrintReceipt(os)} className="flex-1 py-2 bg-slate-50 text-slate-600 rounded-xl font-bold text-[9px] uppercase hover:bg-slate-100 flex items-center justify-center gap-1" title="Imprimir Comprovante Entrada"><Printer size={12}/> Print</button>
+                       </div>
+                    </div>
+                 )}
+
+                 {/* AÇÕES DA ETAPA 2: ORÇAMENTO PENDENTE */}
+                 {activeTab === 'BUDGET_WAIT' && (
                     <button 
-                      onClick={() => handleCreateBudgetFromOS(os)}
-                      className="w-full py-3 bg-indigo-50 text-indigo-600 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-indigo-600 hover:text-white transition-all flex items-center justify-center gap-2"
+                      onClick={handleGoToBudgets}
+                      className="w-full py-3 bg-violet-50 text-violet-600 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-violet-600 hover:text-white transition-all flex items-center justify-center gap-2"
                     >
-                       <FileText size={14} /> Gerar Orçamento
+                       <FileQuestion size={14} /> Ver Proposta
                     </button>
                  )}
 
-                 {/* Botão de Conclusão para OS Pronta */}
-                 {(os.status === OSStatus.WAITING_PARTS || os.status === OSStatus.IN_REPAIR) && (
+                 {/* AÇÕES DA ETAPA 3: BANCADA (EXECUÇÃO) */}
+                 {activeTab === 'LAB' && (
                     <button 
                       onClick={() => handleOpenPaymentModal(os)}
-                      className="w-full py-3 bg-emerald-50 text-emerald-600 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-emerald-600 hover:text-white transition-all flex items-center justify-center gap-2"
+                      className="w-full py-3 bg-indigo-50 text-indigo-600 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-indigo-600 hover:text-white transition-all flex items-center justify-center gap-2"
                     >
-                       <CheckCircle2 size={14} /> Concluir & Receber
+                       <CheckCircle2 size={14} /> Concluir Serviço
                     </button>
+                 )}
+                 
+                 {/* AÇÕES DA ETAPA 4: SAÍDA (FINALIZADO) */}
+                 {activeTab === 'HISTORY' && (
+                    <div className="flex gap-2">
+                        <button onClick={() => handleWhatsAppShare(os, 'COMPLETION')} className="flex-1 py-2 bg-emerald-50 text-emerald-600 rounded-xl font-bold text-[9px] uppercase hover:bg-emerald-100 flex items-center justify-center gap-1"><Share2 size={12}/> Whats</button>
+                        <button onClick={() => handlePrintReceipt(os)} className="flex-1 py-2 bg-slate-50 text-slate-600 rounded-xl font-bold text-[9px] uppercase hover:bg-slate-100 flex items-center justify-center gap-1"><Printer size={12}/> Recibo</button>
+                    </div>
                  )}
               </div>
 
@@ -380,12 +511,17 @@ export const ServiceOrders: React.FC = () => {
                    </div>
                    <textarea placeholder="Relato do Defeito (Reclamação do Cliente)..." className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none resize-none" rows={3} value={deviceDefect} onChange={e => setDeviceDefect(e.target.value)} required />
                 </div>
-                
-                {/* Seção 3: Checklist */}
+
+                {/* Seção 3: Estado e Acessórios */}
                 <div className="space-y-4">
-                   <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><AlertTriangle size={14} className="text-indigo-600"/> Checklist de Entrada</h3>
-                   <input type="text" placeholder="Condição Física (Ex: Tela trincada, arranhões...)" className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none" value={deviceCondition} onChange={e => setDeviceCondition(e.target.value)} />
-                   
+                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><Package size={14} className="text-indigo-600"/> Acessórios e Estado</h3>
+                    <input type="text" placeholder="Acessórios deixados (Capa, Carregador, Chip...)" className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none" value={accessories} onChange={e => setAccessories(e.target.value)} />
+                    <input type="text" placeholder="Condição Física (Ex: Tela trincada, arranhões...)" className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none" value={deviceCondition} onChange={e => setDeviceCondition(e.target.value)} />
+                </div>
+                
+                {/* Seção 4: Checklist */}
+                <div className="space-y-4">
+                   <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><AlertTriangle size={14} className="text-indigo-600"/> Checklist de Entrada (Testes Iniciais)</h3>
                    <div className="grid grid-cols-2 gap-4 mt-4">
                      {Object.keys(checklist).map((key) => {
                        const status = checklist[key as keyof OSChecklist];
@@ -415,17 +551,6 @@ export const ServiceOrders: React.FC = () => {
                        );
                      })}
                    </div>
-                </div>
-
-                {/* Seção 4: Valor (Opcional na Entrada) */}
-                <div className="space-y-4 pt-4 border-t border-slate-50">
-                    <div className="flex justify-between items-center">
-                        <label className="text-xs font-black text-slate-400 uppercase">Orçamento Inicial (Opcional)</label>
-                        <input type="text" placeholder="R$ 0,00" className="w-32 px-4 py-2 bg-slate-50 border-none rounded-xl text-right text-sm font-black outline-none" value={osPrice} onChange={e => {
-                            const val = e.target.value.replace(/\D/g, ''); 
-                            setOsPrice((Number(val)/100).toLocaleString('pt-BR', {minimumFractionDigits: 2}));
-                        }} />
-                    </div>
                 </div>
 
                 <button type="submit" className="w-full py-5 bg-indigo-600 text-white rounded-[2rem] font-black uppercase tracking-widest text-xs shadow-xl hover:bg-indigo-700 transition-all">{editingOS ? 'Salvar Alterações' : 'Confirmar Entrada'}</button>
@@ -488,14 +613,17 @@ export const ServiceOrders: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL DE SUCESSO */}
-      {showSuccessModal && lastCompletedOS && (
+      {/* MODAL DE SUCESSO (COM DUPLO MODO: ENTRADA vs SAÍDA) */}
+      {showSuccessModal && lastProcessedOS && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-900/90 backdrop-blur-md" onClick={() => setShowSuccessModal(false)}></div>
           <div className="relative bg-white w-full max-w-sm rounded-[4rem] p-12 text-center shadow-2xl animate-in zoom-in">
-             <div className="w-24 h-24 bg-emerald-50 text-emerald-500 rounded-[2rem] flex items-center justify-center mx-auto mb-8 shadow-inner"><CheckCircle2 size={48} /></div>
-             <h2 className="text-2xl font-black text-slate-900 mb-2">Serviço Concluído!</h2>
-             <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em] mb-10">OS #{lastCompletedOS.id}</p>
+             <div className={`w-24 h-24 ${successMode === 'ENTRY' ? 'bg-indigo-50 text-indigo-500' : 'bg-emerald-50 text-emerald-500'} rounded-[2rem] flex items-center justify-center mx-auto mb-8 shadow-inner`}>
+                {successMode === 'ENTRY' ? <ClipboardCheck size={48} /> : <CheckCircle2 size={48} />}
+             </div>
+             
+             <h2 className="text-2xl font-black text-slate-900 mb-2">{successMode === 'ENTRY' ? 'Recebimento Registrado!' : 'Serviço Concluído!'}</h2>
+             <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em] mb-10">Protocolo: {lastProcessedOS.id}</p>
              
              {showPhoneInput ? (
                 <div className="mb-8 space-y-4 animate-in slide-in-from-bottom-2">
@@ -508,13 +636,17 @@ export const ServiceOrders: React.FC = () => {
                      className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-center text-lg font-black outline-none focus:ring-2 focus:ring-emerald-500/20"
                      autoFocus
                    />
-                   <button onClick={handleWhatsAppShare} disabled={!manualPhone} className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-xl hover:bg-emerald-700 transition-all disabled:opacity-50">Enviar Mensagem</button>
+                   <button onClick={() => handleWhatsAppShare(undefined)} disabled={!manualPhone} className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-xl hover:bg-emerald-700 transition-all disabled:opacity-50">Enviar Mensagem</button>
                    <button onClick={() => setShowPhoneInput(false)} className="text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600">Cancelar Envio</button>
                 </div>
              ) : (
                 <div className="space-y-3">
-                    <button onClick={() => window.print()} className="w-full py-5 bg-slate-900 text-white rounded-3xl font-black uppercase tracking-widest text-[10px] flex items-center justify-center gap-3 shadow-xl"><Printer size={18} /> Imprimir Recibo</button>
-                    <button onClick={handleWhatsAppShare} className="w-full py-5 bg-emerald-600 text-white rounded-3xl font-black uppercase tracking-widest text-[10px] flex items-center justify-center gap-3 shadow-xl hover:bg-emerald-700 transition-all"><Share2 size={18} /> Enviar WhatsApp</button>
+                    <button onClick={() => window.print()} className="w-full py-5 bg-slate-900 text-white rounded-3xl font-black uppercase tracking-widest text-[10px] flex items-center justify-center gap-3 shadow-xl">
+                        <Printer size={18} /> {successMode === 'ENTRY' ? 'Imprimir Recibo de Entrada' : 'Imprimir Recibo Final'}
+                    </button>
+                    <button onClick={() => handleWhatsAppShare(undefined)} className="w-full py-5 bg-emerald-600 text-white rounded-3xl font-black uppercase tracking-widest text-[10px] flex items-center justify-center gap-3 shadow-xl hover:bg-emerald-700 transition-all">
+                        <Share2 size={18} /> Notificar Cliente
+                    </button>
                     <button onClick={() => setShowSuccessModal(false)} className="w-full py-5 bg-indigo-50 text-indigo-600 rounded-3xl font-black uppercase tracking-widest text-[10px] hover:bg-indigo-100 transition-all">Fechar</button>
                 </div>
              )}

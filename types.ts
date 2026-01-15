@@ -44,12 +44,13 @@ export interface User {
 }
 
 export enum OSStatus {
-  AWAITING = 'AWAITING',
-  IN_ANALYSIS = 'IN_ANALYSIS',
-  WAITING_PARTS = 'WAITING_PARTS',
-  IN_REPAIR = 'IN_REPAIR',
-  COMPLETED = 'COMPLETED',
-  CANCELLED = 'CANCELLED'
+  AWAITING = 'AWAITING', // Aguardando Triagem
+  IN_ANALYSIS = 'IN_ANALYSIS', // Em Triagem/Análise (Entrada)
+  BUDGET_PENDING = 'BUDGET_PENDING', // Orçamento Feito (Aguardando Cliente)
+  WAITING_PARTS = 'WAITING_PARTS', // Aprovado (Aguardando Peças)
+  IN_REPAIR = 'IN_REPAIR', // Aprovado (Em Manutenção)
+  COMPLETED = 'COMPLETED', // Pronto/Entregue
+  CANCELLED = 'CANCELLED' // Recusado/Cancelado
 }
 
 export interface OSChecklist {
@@ -70,6 +71,7 @@ export interface ServiceOrder {
   device: string;
   imei?: string; // Novo
   devicePassword?: string; // Novo
+  accessories?: string; // Novo: Acessórios deixados (Capa, Carregador, etc)
   defect: string;
   status: OSStatus;
   price: number;

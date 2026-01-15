@@ -34,17 +34,19 @@ export const SUPER_ADMIN_NAV_ITEM = {
 
 export const STATUS_LABELS: Record<string, string> = {
   ALL: 'Todos os Status',
-  AWAITING: 'Aguardando Início',
-  IN_ANALYSIS: 'Em Orçamento',
+  AWAITING: 'Aguardando',
+  IN_ANALYSIS: 'Em Análise (Entrada)',
+  BUDGET_PENDING: 'Aguardando Aprovação',
   WAITING_PARTS: 'Aguardando Peças',
   IN_REPAIR: 'Em Manutenção',
-  COMPLETED: 'Serviço Concluído',
-  CANCELLED: 'Serviço Cancelado',
+  COMPLETED: 'Pronto / Entregue',
+  CANCELLED: 'Cancelado / Recusado',
 };
 
 export const STATUS_COLORS: Record<string, string> = {
-  AWAITING: 'bg-yellow-100 text-yellow-800',
+  AWAITING: 'bg-slate-100 text-slate-600',
   IN_ANALYSIS: 'bg-blue-100 text-blue-800',
+  BUDGET_PENDING: 'bg-violet-100 text-violet-800',
   WAITING_PARTS: 'bg-orange-100 text-orange-800',
   IN_REPAIR: 'bg-indigo-100 text-indigo-800',
   COMPLETED: 'bg-green-100 text-green-800',
