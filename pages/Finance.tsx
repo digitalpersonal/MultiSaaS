@@ -1,8 +1,7 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
-import { DollarSign, ArrowUpCircle, ArrowDownCircle, Plus, Search, X, TrendingUp, BarChart3, FileText, CheckCircle2, Calendar, Printer, Filter, PieChart, AlertTriangle, Tag, Settings2, Trash2, CalendarDays, Clock } from 'lucide-react';
+import { DollarSign, ArrowUpCircle, ArrowDownCircle, Plus, Search, X, TrendingUp, BarChart3, FileText, CheckCircle2, Calendar, Printer, Filter, PieChart, AlertTriangle, Tag, Settings2, Trash2, CalendarDays, Clock, CreditCard } from 'lucide-react';
 import { databaseService } from '../services/databaseService';
-import { Transaction as TransactionType, UserRole, FinanceCategory } from '../types';
+import { Transaction as TransactionType, UserRole, FinanceCategory, Company } from '../types';
 
 const currencyFormatter = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 export const formatToBRL = (value: number) => currencyFormatter.format(value);
@@ -12,9 +11,12 @@ export const Finance: React.FC = () => {
   const FINANCE_TABLE_NAME = 'finance';
   const CATEGORIES_STORAGE_KEY = 'multiplus_finance_categories';
   const CATEGORIES_TABLE_NAME = 'finance_categories';
+  const TENANTS_STORAGE_KEY = 'multiplus_tenants';
+  const TENANTS_TABLE_NAME = 'tenants';
 
   const [transactions, setTransactions] = useState<TransactionType[]>([]);
   const [categories, setCategories] = useState<FinanceCategory[]>([]);
+  const [currentCompany, setCurrentCompany] = useState<Company | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   // Filtros de Data
@@ -42,6 +44,12 @@ export const Finance: React.FC = () => {
       const data = await databaseService.fetch<TransactionType>(FINANCE_TABLE_NAME, FINANCE_STORAGE_KEY);
       const cats = await databaseService.fetch<FinanceCategory>(CATEGORIES_TABLE_NAME, CATEGORIES_STORAGE_KEY);
       
+      if (companyId) {
+        const tenants = await databaseService.fetch<Company>(TENANTS_TABLE_NAME, TENANTS_STORAGE_KEY);
+        const comp = tenants.find(t => t.id === companyId);
+        setCurrentCompany(comp || null);
+      }
+
       // Ordenar por data decrescente (mais recente primeiro)
       const sortedData = data.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       
@@ -57,6 +65,7 @@ export const Finance: React.FC = () => {
           { id: 'cat_5', companyId, name: 'Energia/Água', type: 'EXPENSE' },
           { id: 'cat_6', companyId, name: 'Pessoal', type: 'EXPENSE' },
           { id: 'cat_7', companyId, name: 'Marketing', type: 'EXPENSE' },
+          { id: 'cat_8', companyId, name: 'Taxas Financeiras', type: 'EXPENSE' },
         ];
         await databaseService.save(CATEGORIES_TABLE_NAME, CATEGORIES_STORAGE_KEY, defaultCategories);
         setCategories(defaultCategories);
@@ -77,6 +86,7 @@ export const Finance: React.FC = () => {
   const [trDesc, setTrDesc] = useState('');
   const [trAmount, setTrAmount] = useState('');
   const [trCategory, setTrCategory] = useState('');
+  const [trMethod, setTrMethod] = useState('');
   const [trDate, setTrDate] = useState(new Date().toISOString().split('T')[0]);
   
   // Installment States
@@ -85,6 +95,23 @@ export const Finance: React.FC = () => {
 
   // Category Manager States
   const [newCategoryName, setNewCategoryName] = useState('');
+
+  // Helper para simular taxa
+  const getSimulatedFee = () => {
+    if (trType !== 'INCOME' || !currentCompany || !trAmount) return null;
+    const value = parseFloat(trAmount.replace(/\D/g, '')) / 100;
+    
+    let rate = 0;
+    if (trMethod === 'CREDIT') rate = currentCompany.creditCardFee || 0;
+    if (trMethod === 'DEBIT') rate = currentCompany.debitCardFee || 0;
+    
+    if (rate > 0) {
+      const fee = value * (rate / 100);
+      return { rate, fee, net: value - fee };
+    }
+    return null;
+  };
+  const simulatedFee = getSimulatedFee();
 
   // Lógica de Filtro e Cálculos
   const applyDateFilter = (period: 'TODAY' | 'WEEK' | 'MONTH' | 'CUSTOM') => {
@@ -174,6 +201,7 @@ export const Finance: React.FC = () => {
           date: dateObj.toISOString(),
           status: isFuture ? 'PENDING' : 'PAID',
           category: trCategory || 'Geral',
+          method: trMethod,
           installment: {
             parentId,
             current: i + 1,
@@ -193,8 +221,38 @@ export const Finance: React.FC = () => {
         type: trType,
         date: dateObj.toISOString(),
         status: isFuture ? 'PENDING' : 'PAID',
-        category: trCategory || 'Geral'
+        category: trCategory || 'Geral',
+        method: trMethod
       });
+
+      // Lógica de Taxa Automática (apenas para transação única e Receita)
+      if (trType === 'INCOME' && !isFuture && currentCompany && (trMethod === 'CREDIT' || trMethod === 'DEBIT')) {
+        let feeRate = 0;
+        let feeName = '';
+
+        if (trMethod === 'CREDIT') {
+          feeRate = currentCompany.creditCardFee || 0;
+          feeName = 'Crédito';
+        } else if (trMethod === 'DEBIT') {
+          feeRate = currentCompany.debitCardFee || 0;
+          feeName = 'Débito';
+        }
+
+        if (feeRate > 0) {
+          const feeAmount = totalAmount * (feeRate / 100);
+          newTransactions.push({
+            id: `FEE-${Date.now()}`,
+            companyId: companyId,
+            description: `Taxa Cartão ${feeName} - ${trDesc}`,
+            amount: feeAmount,
+            type: 'EXPENSE',
+            date: dateObj.toISOString(),
+            status: 'PAID',
+            category: 'Taxas Financeiras',
+            method: 'Automático'
+          });
+        }
+      }
     }
     
     // Salvar todas as transações geradas
@@ -209,6 +267,7 @@ export const Finance: React.FC = () => {
     setTrDesc(''); 
     setTrAmount(''); 
     setTrCategory('');
+    setTrMethod('');
     setIsInstallment(false);
     setInstallmentCount(2);
     setTrDate(new Date().toISOString().split('T')[0]);
@@ -222,7 +281,7 @@ export const Finance: React.FC = () => {
       id: `CAT-${Date.now()}`,
       companyId,
       name: newCategoryName,
-      type: trType // Usa o tipo selecionado no modal (Reaproveitando o state trType para o contexto do modal de categorias)
+      type: trType // Usa o tipo selecionado no modal
     };
 
     await databaseService.insertOne<FinanceCategory>(CATEGORIES_TABLE_NAME, CATEGORIES_STORAGE_KEY, newCat);
@@ -267,10 +326,10 @@ export const Finance: React.FC = () => {
            <button onClick={handlePrint} className="px-6 py-3 bg-slate-900 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-lg flex items-center gap-2 hover:bg-slate-800 transition-all">
               <Printer size={16} /> Imprimir Relatório
            </button>
-           <button onClick={() => { setTrType('EXPENSE'); setIsModalOpen(true); setTrCategory(''); setIsInstallment(false); }} className="px-6 py-3 bg-rose-600 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-lg flex items-center gap-2 hover:bg-rose-700 transition-all">
+           <button onClick={() => { setTrType('EXPENSE'); setIsModalOpen(true); setTrCategory(''); setTrMethod(''); setIsInstallment(false); }} className="px-6 py-3 bg-rose-600 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-lg flex items-center gap-2 hover:bg-rose-700 transition-all">
               <ArrowDownCircle size={16} /> Despesa
            </button>
-           <button onClick={() => { setTrType('INCOME'); setIsModalOpen(true); setTrCategory(''); setIsInstallment(false); }} className="px-6 py-3 bg-emerald-600 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-lg flex items-center gap-2 hover:bg-emerald-700 transition-all">
+           <button onClick={() => { setTrType('INCOME'); setIsModalOpen(true); setTrCategory(''); setTrMethod(''); setIsInstallment(false); }} className="px-6 py-3 bg-emerald-600 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-lg flex items-center gap-2 hover:bg-emerald-700 transition-all">
               <ArrowUpCircle size={16} /> Receita
            </button>
         </div>
@@ -451,6 +510,36 @@ export const Finance: React.FC = () => {
                         ))}
                     </select>
                  </div>
+
+                 {/* Seção Método de Pagamento (Apenas para Receitas) */}
+                 {trType === 'INCOME' && (
+                   <div>
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Forma de Pagamento</label>
+                      <select value={trMethod} onChange={e => setTrMethod(e.target.value)} className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none cursor-pointer appearance-none">
+                          <option value="">Outros / Dinheiro</option>
+                          <option value="PIX">Pix</option>
+                          <option value="CREDIT">Cartão de Crédito</option>
+                          <option value="DEBIT">Cartão de Débito</option>
+                      </select>
+                      {simulatedFee && (
+                         <div className="mt-3 p-4 bg-slate-50 border border-slate-100 rounded-2xl space-y-1">
+                            <div className="flex justify-between text-[10px] font-bold text-slate-400">
+                               <span>Valor Bruto (Entrada):</span>
+                               <span>{formatToBRL(simulatedFee.fee + simulatedFee.net)}</span>
+                            </div>
+                            <div className="flex justify-between text-[10px] font-bold text-rose-500">
+                               <span>(-) Taxa Admin ({simulatedFee.rate}%):</span>
+                               <span>{formatToBRL(simulatedFee.fee)}</span>
+                            </div>
+                            <div className="pt-2 border-t border-slate-200 flex justify-between text-xs font-black text-emerald-600">
+                               <span>Líquido Estimado:</span>
+                               <span>{formatToBRL(simulatedFee.net)}</span>
+                            </div>
+                            <p className="text-[9px] text-slate-400 italic pt-2">* A taxa será lançada como uma despesa separada.</p>
+                         </div>
+                      )}
+                   </div>
+                 )}
 
                  {/* Seção de Parcelamento */}
                  <div className="p-5 bg-slate-50 rounded-3xl border border-slate-100">

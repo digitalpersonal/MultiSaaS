@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Search, ShoppingCart, Plus, Minus, Trash2, Tag, DollarSign, CreditCard, Banknote, QrCode, CheckCircle2, X, User, Printer, ShoppingBag, ArrowRight, ArrowLeft, Zap, Package, Store, UserPlus, ChevronLeft, Check, LayoutDashboard } from 'lucide-react';
+import { Search, ShoppingCart, Plus, Minus, Trash2, Tag, DollarSign, CreditCard, Banknote, QrCode, CheckCircle2, X, User, Printer, ShoppingBag, ArrowRight, ArrowLeft, Zap, Package, Store, UserPlus, ChevronLeft, Check, LayoutDashboard, AlertCircle } from 'lucide-react';
 import { databaseService } from '../services/databaseService';
-import { Product, Customer, Transaction, UserRole } from '../types';
+import { Product, Customer, Transaction, UserRole, Company } from '../types';
 import { useNavigate } from 'react-router-dom';
 
 const currencyFormatter = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -14,11 +14,14 @@ export const Sales: React.FC = () => {
   const CUSTOMER_TABLE_NAME = 'customers';
   const FINANCE_STORAGE_KEY = 'multiplus_finance';
   const FINANCE_TABLE_NAME = 'finance';
+  const TENANTS_STORAGE_KEY = 'multiplus_tenants';
+  const TENANTS_TABLE_NAME = 'tenants';
 
   const navigate = useNavigate();
   const [flow, setFlow] = useState<'START' | 'ORDER' | 'CHECKOUT'>('START');
   const [catalog, setCatalog] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [currentCompany, setCurrentCompany] = useState<Company | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   
   const [searchTerm, setSearchTerm] = useState('');
@@ -56,6 +59,13 @@ export const Sales: React.FC = () => {
       const customersData = await databaseService.fetch<Customer>(CUSTOMER_TABLE_NAME, CUSTOMER_STORAGE_KEY);
       setCatalog(inventoryData);
       setCustomers(customersData);
+
+      if (companyId) {
+        const tenants = await databaseService.fetch<Company>(TENANTS_TABLE_NAME, TENANTS_STORAGE_KEY);
+        const comp = tenants.find(t => t.id === companyId);
+        setCurrentCompany(comp || null);
+      }
+
       setIsLoading(false);
     };
     loadData();
@@ -109,23 +119,56 @@ export const Sales: React.FC = () => {
   const discountNumeric = parseFloat(discountValue.replace(/\D/g, '')) / 100 || 0;
   const total = Math.max(0, subtotal - discountNumeric);
 
+  const getFeeInfo = () => {
+    if (!currentCompany) return null;
+    let rate = 0;
+    if (paymentMethod === 'CRÉDITO') rate = currentCompany.creditCardFee || 0;
+    if (paymentMethod === 'CARTÃO') rate = currentCompany.debitCardFee || 0; // Assumindo débito para botão 'Cartão'
+    
+    if (rate > 0) {
+      const feeValue = total * (rate / 100);
+      return { rate, value: feeValue };
+    }
+    return null;
+  };
+
+  const feeInfo = getFeeInfo();
+
   const handleFinalize = async () => {
     if (!companyId) return;
 
-    // 1. Registrar no financeiro
+    // 1. Registrar no financeiro (Receita Bruta - Valor Cheio pago pelo cliente)
+    const incomeId = `FIN-${Date.now()}`;
     const newTransaction: Transaction = { 
-      id: `FIN-${Date.now()}`, 
+      id: incomeId, 
       companyId: companyId,
-      description: `Venda ${Date.now().toString().slice(-5)}`, // Usando description para texto
+      description: `Venda ${Date.now().toString().slice(-5)}`, 
       amount: total, 
       type: 'INCOME', 
       status: 'PAID', 
       date: new Date().toISOString(), 
-      method: paymentMethod || 'Não Informado' 
+      method: paymentMethod || 'Não Informado',
+      category: 'Vendas'
     };
     await databaseService.insertOne<Transaction>(FINANCE_TABLE_NAME, FINANCE_STORAGE_KEY, newTransaction);
 
-    // 2. Decrementar estoque dos produtos vendidos
+    // 2. Aplicar Taxa Automática se Cartão (Despesa separada da empresa)
+    if (feeInfo) {
+      const feeTransaction: Transaction = {
+        id: `FEE-${Date.now()}`,
+        companyId: companyId,
+        description: `Taxa Operacional (${paymentMethod}) - Venda PDV`,
+        amount: feeInfo.value,
+        type: 'EXPENSE',
+        status: 'PAID',
+        date: new Date().toISOString(),
+        method: 'Automático',
+        category: 'Taxas Financeiras'
+      };
+      await databaseService.insertOne<Transaction>(FINANCE_TABLE_NAME, FINANCE_STORAGE_KEY, feeTransaction);
+    }
+
+    // 3. Decrementar estoque dos produtos vendidos
     for (const item of cart) {
       if (item.type === 'PHYSICAL' && item.stock !== undefined) {
         const currentProduct = catalog.find(p => p.id === item.id);
@@ -255,10 +298,23 @@ export const Sales: React.FC = () => {
                ) : (
                  <div className="space-y-4 animate-in slide-in-from-bottom-4">
                     <div className="grid grid-cols-2 gap-2">
+                       {/* CRÉDITO = Cartão Crédito (Taxa Crédito) | CARTÃO = Cartão Débito (Taxa Débito) */}
                        {['PIX', 'DINHEIRO', 'CARTÃO', 'CRÉDITO'].map(m => (
-                         <button key={m} onClick={() => setPaymentMethod(m)} className={`py-4 border-2 rounded-2xl text-[10px] font-black uppercase transition-all ${paymentMethod === m ? 'border-indigo-600 bg-indigo-50 text-indigo-600' : 'border-white bg-white text-slate-400'}`}>{m}</button>
+                         <button key={m} onClick={() => setPaymentMethod(m)} className={`py-4 border-2 rounded-2xl text-[10px] font-black uppercase transition-all ${paymentMethod === m ? 'border-indigo-600 bg-indigo-50 text-indigo-600' : 'border-white bg-white text-slate-400'}`}>{m === 'CARTÃO' ? 'DÉBITO' : m}</button>
                        ))}
                     </div>
+                    {feeInfo && (
+                        <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100 flex items-start gap-3">
+                           <AlertCircle size={16} className="text-amber-500 shrink-0 mt-0.5" />
+                           <div>
+                              <p className="text-[10px] font-black uppercase text-amber-700 mb-1">Custo da Empresa</p>
+                              <p className="text-[10px] text-amber-600 leading-relaxed">
+                                 A taxa de <strong>{feeInfo.rate}% ({formatToBRL(feeInfo.value)})</strong> será registrada como despesa operacional interna. <br/>
+                                 <span className="font-bold underline">O cliente pagará o valor normal de {formatToBRL(total)}.</span>
+                              </p>
+                           </div>
+                        </div>
+                    )}
                     <button disabled={!paymentMethod} onClick={handleFinalize} className="w-full py-6 bg-indigo-600 text-white rounded-[2rem] font-black uppercase tracking-widest text-xs shadow-2xl hover:bg-indigo-700 transition-all disabled:opacity-20">Concluir Pagamento</button>
                  </div>
                )}

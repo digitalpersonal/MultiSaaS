@@ -27,6 +27,8 @@ export interface Company {
   profileCompleted: boolean;
   pixType?: 'CPF' | 'CNPJ' | 'EMAIL' | 'PHONE' | 'RANDOM';
   pixKey?: string;
+  creditCardFee?: number; // Taxa Cartão de Crédito %
+  debitCardFee?: number;  // Taxa Cartão de Débito %
   adminEmail?: string; // Temporário para SuperAdmin mockado
   address?: string; 
   phone?: string; // WhatsApp / Telefone de Contato
@@ -139,4 +141,27 @@ export interface Transaction {
     current: number;
     total: number;
   };
+}
+
+export interface BudgetItem {
+  productId: string;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  total: number;
+}
+
+export interface Budget {
+  id: string;
+  companyId: string;
+  customerId?: string;
+  customerName: string;
+  items: BudgetItem[];
+  totalValue: number;
+  discount: number;
+  finalValue: number;
+  status: 'OPEN' | 'APPROVED' | 'REJECTED' | 'CONVERTED';
+  createdAt: string;
+  validUntil: string;
+  notes?: string;
 }

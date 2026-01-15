@@ -9,14 +9,16 @@ import {
   ShoppingCart, 
   BarChart3, 
   Settings,
-  ShieldCheck
+  ShieldCheck,
+  FileText
 } from 'lucide-react';
 
 export const NAV_ITEMS = [
   { id: 'dashboard', label: 'Painel Geral', icon: <LayoutDashboard size={20} />, path: '/' },
-  { id: 'inventory', label: 'Estoque de Produtos', icon: <Package size={20} />, path: '/estoque' },
-  { id: 'services', label: 'Ordens de Serviço', icon: <Wrench size={20} />, path: '/servicos' },
   { id: 'sales', label: 'Frente de Caixa (PDV)', icon: <ShoppingCart size={20} />, path: '/vendas' },
+  { id: 'budgets', label: 'Orçamentos', icon: <FileText size={20} />, path: '/orcamentos' },
+  { id: 'services', label: 'Ordens de Serviço', icon: <Wrench size={20} />, path: '/servicos' },
+  { id: 'inventory', label: 'Estoque de Produtos', icon: <Package size={20} />, path: '/estoque' },
   { id: 'finance', label: 'Gestão Financeira', icon: <DollarSign size={20} />, path: '/financeiro' },
   { id: 'customers', label: 'Cadastro de Clientes', icon: <Users size={20} />, path: '/clientes' },
   { id: 'reports', label: 'Relatórios Gerenciais', icon: <BarChart3 size={20} />, path: '/relatorios' },

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Building2, CreditCard, Save, QrCode, Key, MapPin, ImageIcon, UploadCloud, AlertTriangle, ChevronRight, Zap, Phone, Lock, CheckCircle2 } from 'lucide-react';
 import { databaseService } from '../services/databaseService';
@@ -22,9 +21,13 @@ export const Settings: React.FC = () => {
   const [taxId, setTaxId] = useState('');
   const [address, setAddress] = useState('');
   const [phone, setPhone] = useState('');
+  const [logo, setLogo] = useState('');
+
+  // States para Financeiro (Pix e Taxas)
   const [pixType, setPixType] = useState('CNPJ');
   const [pixKey, setPixKey] = useState('');
-  const [logo, setLogo] = useState('');
+  const [creditCardFee, setCreditCardFee] = useState('');
+  const [debitCardFee, setDebitCardFee] = useState('');
 
   // States para Senha
   const [newPassword, setNewPassword] = useState('');
@@ -48,6 +51,8 @@ export const Settings: React.FC = () => {
           setPixType(currentCompany.pixType || 'CNPJ');
           setPixKey(currentCompany.pixKey || '');
           setLogo(currentCompany.logo || '');
+          setCreditCardFee(currentCompany.creditCardFee ? currentCompany.creditCardFee.toString() : '0');
+          setDebitCardFee(currentCompany.debitCardFee ? currentCompany.debitCardFee.toString() : '0');
         }
       }
       setIsLoading(false);
@@ -79,6 +84,8 @@ export const Settings: React.FC = () => {
       pixType, 
       pixKey, 
       logo, 
+      creditCardFee: parseFloat(creditCardFee) || 0,
+      debitCardFee: parseFloat(debitCardFee) || 0,
       profileCompleted: true 
     };
     
@@ -91,7 +98,7 @@ export const Settings: React.FC = () => {
     setCompany(reloadedCompany || null);
 
     setIsSaving(false);
-    alert('DADOS ATUALIZADOS! Sua empresa está configurada para emissão de documentos.');
+    alert('DADOS ATUALIZADOS! Configurações salvas com sucesso.');
   };
 
   const handlePasswordUpdate = async (e: React.FormEvent) => {
@@ -162,8 +169,8 @@ export const Settings: React.FC = () => {
           <button onClick={() => setActiveTab('empresa')} className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${activeTab === 'empresa' ? 'bg-white text-indigo-600 shadow-md' : 'text-slate-400 hover:bg-white'}`}>
             <Building2 size={18} /> Empresa
           </button>
-          <button onClick={() => setActiveTab('pix')} className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${activeTab === 'pix' ? 'bg-white text-indigo-600 shadow-md' : 'text-slate-400 hover:bg-white'}`}>
-            <QrCode size={18} /> Cobrança Pix
+          <button onClick={() => setActiveTab('financeiro')} className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${activeTab === 'financeiro' ? 'bg-white text-indigo-600 shadow-md' : 'text-slate-400 hover:bg-white'}`}>
+            <CreditCard size={18} /> Dados Financeiros
           </button>
           <div className="h-px bg-slate-200 mx-4 my-2"></div>
           <button onClick={() => setActiveTab('security')} className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${activeTab === 'security' ? 'bg-white text-rose-600 shadow-md' : 'text-slate-400 hover:bg-white'}`}>
@@ -211,28 +218,66 @@ export const Settings: React.FC = () => {
             </div>
           )}
 
-          {activeTab === 'pix' && (
+          {activeTab === 'financeiro' && (
             <div className="space-y-8 animate-in fade-in duration-500">
-               <div className="flex items-center gap-6">
-                  <div className="p-4 bg-emerald-50 text-emerald-600 rounded-[1.5rem]">
-                     <QrCode size={32} />
+               {/* Seção Pix */}
+               <div className="space-y-6">
+                  <div className="flex items-center gap-6">
+                      <div className="p-4 bg-emerald-50 text-emerald-600 rounded-[1.5rem]">
+                        <QrCode size={32} />
+                      </div>
+                      <div>
+                        <h3 className="text-xl font-black text-slate-900">Recebimento Pix</h3>
+                        <p className="text-sm text-slate-500 font-medium">Dados para geração de QR Code.</p>
+                      </div>
                   </div>
-                  <div>
-                     <h3 className="text-xl font-black text-slate-900">Recebimento Instantâneo (PIX)</h3>
-                     <p className="text-sm text-slate-500 font-medium">Configura os dados para geração de QR Code e links de pagamento.</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div>
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Tipo de Chave</label>
+                        <select value={pixType} onChange={e => setPixType(e.target.value)} className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none cursor-pointer">
+                          <option value="CNPJ">CNPJ</option><option value="CPF">CPF</option><option value="EMAIL">E-mail</option><option value="PHONE">Celular</option><option value="RANDOM">Aleatória</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Chave Pix Oficial</label>
+                        <input type="text" value={pixKey} onChange={e => setPixKey(e.target.value)} className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none" placeholder="Sua chave aqui..." />
+                      </div>
                   </div>
                </div>
-               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Tipo de Chave</label>
-                    <select value={pixType} onChange={e => setPixType(e.target.value)} className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none cursor-pointer">
-                       <option value="CNPJ">CNPJ</option><option value="CPF">CPF</option><option value="EMAIL">E-mail</option><option value="PHONE">Celular</option><option value="RANDOM">Aleatória</option>
-                    </select>
+
+               <div className="h-px bg-slate-100 w-full"></div>
+
+               {/* Seção Taxas de Cartão */}
+               <div className="space-y-6">
+                  <div className="flex items-center gap-6">
+                      <div className="p-4 bg-violet-50 text-violet-600 rounded-[1.5rem]">
+                        <CreditCard size={32} />
+                      </div>
+                      <div>
+                        <h3 className="text-xl font-black text-slate-900">Taxas de Máquina de Cartão</h3>
+                        <p className="text-sm text-slate-500 font-medium">Configuração para desconto automático em vendas.</p>
+                      </div>
                   </div>
-                  <div>
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Chave Pix Oficial</label>
-                    <input type="text" value={pixKey} onChange={e => setPixKey(e.target.value)} className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none" placeholder="Sua chave aqui..." />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div>
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Taxa Crédito (%)</label>
+                        <div className="relative">
+                           <input type="number" step="0.01" value={creditCardFee} onChange={e => setCreditCardFee(e.target.value)} className="w-full pl-6 pr-10 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none" placeholder="0.00" />
+                           <span className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-400 font-black">%</span>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Taxa Débito (%)</label>
+                        <div className="relative">
+                           <input type="number" step="0.01" value={debitCardFee} onChange={e => setDebitCardFee(e.target.value)} className="w-full pl-6 pr-10 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none" placeholder="0.00" />
+                           <span className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-400 font-black">%</span>
+                        </div>
+                      </div>
                   </div>
+                  <p className="text-[10px] text-slate-400 font-medium bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                    <Zap size={12} className="inline mr-1 text-amber-500" />
+                    As taxas configuradas aqui serão lançadas automaticamente como <strong>Despesa</strong> (Taxas Financeiras) sempre que você realizar uma venda por cartão no PDV ou no Financeiro.
+                  </p>
                </div>
             </div>
           )}

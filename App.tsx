@@ -11,6 +11,7 @@ import { Finance } from './pages/Finance';
 import { Reports } from './pages/Reports';
 import { Settings } from './pages/Settings';
 import { SuperAdmin } from './pages/SuperAdmin';
+import { Budgets } from './pages/Budgets'; // Importa a nova página
 import { Login } from './pages/Login';
 import { User, UserRole } from './types';
 
@@ -42,6 +43,7 @@ const App: React.FC = () => {
           <Route path="/estoque" element={<Inventory />} />
           <Route path="/servicos" element={<ServiceOrders />} />
           <Route path="/vendas" element={<Sales />} />
+          <Route path="/orcamentos" element={<Budgets />} /> {/* Nova Rota */}
           <Route path="/financeiro" element={<Finance />} />
           <Route path="/clientes" element={<Customers />} />
           <Route path="/relatorios" element={<Reports />} />
