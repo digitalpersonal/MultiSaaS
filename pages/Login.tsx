@@ -110,17 +110,29 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
     window.open('https://wa.me/5535991048020?text=Olá Silvio! Gostaria de falar sobre o sistema Multiplus.', '_blank');
   };
 
+  const handleCloudStatusClick = () => {
+    if (!cloudStatus) {
+      alert("⚠️ MODO LOCAL ATIVO\n\nO sistema não detectou as chaves de conexão com o Supabase.\n\nPara ativar o Modo Nuvem (Multi-dispositivo), verifique se as variáveis SUPABASE_URL e SUPABASE_ANON_KEY estão configuradas corretamente no seu arquivo .env ou no painel da hospedagem.");
+    } else {
+      alert("✅ MODO NUVEM ATIVO\n\nConexão com Supabase estabelecida.\nSeus dados estão sendo sincronizados e acessíveis de qualquer lugar.");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-indigo-100 via-slate-50 to-white relative">
       
-      {/* Indicador de Status do Servidor */}
-      <div className="absolute top-6 right-6 flex items-center gap-2 px-4 py-2 bg-white/50 backdrop-blur-md rounded-full shadow-sm border border-slate-200" title={cloudStatus ? "Conectado à Nuvem (Acesso Multi-dispositivo)" : "Modo Local (Dados apenas neste dispositivo)"}>
+      {/* Indicador de Status do Servidor (Clicável para Diagnóstico) */}
+      <button 
+        onClick={handleCloudStatusClick}
+        className={`absolute top-6 right-6 flex items-center gap-2 px-4 py-2 backdrop-blur-md rounded-full shadow-sm border transition-all ${cloudStatus ? 'bg-emerald-50/50 border-emerald-200 hover:bg-emerald-100' : 'bg-white/50 border-slate-200 hover:bg-slate-100'}`}
+        title={cloudStatus ? "Conectado à Nuvem (Clique para detalhes)" : "Modo Local (Clique para diagnosticar)"}
+      >
          {cloudStatus ? (
-            <><div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div><Cloud size={14} className="text-slate-500"/><span className="text-[10px] font-bold text-slate-500 uppercase">Cloud On</span></>
+            <><div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div><Cloud size={14} className="text-emerald-600"/><span className="text-[10px] font-bold text-emerald-700 uppercase">Cloud On</span></>
          ) : (
             <><div className="w-2 h-2 rounded-full bg-slate-400"></div><CloudOff size={14} className="text-slate-400"/><span className="text-[10px] font-bold text-slate-400 uppercase">Local Mode</span></>
          )}
-      </div>
+      </button>
 
       <div className="w-full max-w-md">
         <div className="text-center mb-10">
