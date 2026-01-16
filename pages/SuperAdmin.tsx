@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { 
   Building2, 
@@ -67,6 +66,9 @@ export const SuperAdmin: React.FC = () => {
     e.preventDefault();
     const tenantId = `comp_${Math.random().toString(36).substr(2, 9)}`;
     
+    // Normalização crítica para login consistente
+    const safeEmail = adminEmail.trim().toLowerCase();
+    
     const newCompany: CompanyType = {
       id: tenantId,
       name: companyName,
@@ -76,14 +78,14 @@ export const SuperAdmin: React.FC = () => {
       currency: 'BRL', 
       taxRate: 0, 
       serviceFeeRate: 0, 
-      adminEmail: adminEmail 
+      adminEmail: safeEmail 
     };
 
     const newUser: UserType = {
       id: `user_${Math.random().toString(36).substr(2, 9)}`,
       companyId: tenantId,
       name: `Empresário ${companyName}`,
-      email: adminEmail,
+      email: safeEmail,
       password: adminPassword,
       role: UserRole.COMPANY_ADMIN
     };
@@ -100,7 +102,7 @@ export const SuperAdmin: React.FC = () => {
     setAdminEmail('');
     setAdminPassword('');
 
-    alert(`AMBIENTE PROVISIONADO!\nUnidade: ${companyName}\nAcesso: ${adminEmail}`);
+    alert(`AMBIENTE PROVISIONADO COM SUCESSO!\n\nUnidade: ${companyName}\nLogin: ${safeEmail}\n\nEnvie estes dados para o cliente.`);
   };
 
   const toggleCompanyStatus = async (id: string) => {
@@ -109,7 +111,6 @@ export const SuperAdmin: React.FC = () => {
 
     const isBlocking = companyToUpdate.status === CompanyStatus.ACTIVE;
 
-    // Confirmação explícita sobre pagamento
     const confirmMessage = isBlocking 
       ? `ATENÇÃO: SUSPENDER ACESSO\n\nMotivo: Inadimplência ou Bloqueio Administrativo.\n\nDeseja realmente BLOQUEAR o acesso da empresa "${companyToUpdate.name}"? Ninguém desta unidade conseguirá fazer login.`
       : `LIBERAR ACESSO\n\nDeseja reativar o acesso da empresa "${companyToUpdate.name}"?`;
@@ -122,6 +123,29 @@ export const SuperAdmin: React.FC = () => {
     const updatedCompanies = await databaseService.fetch<CompanyType>(TENANTS_TABLE_NAME, TENANTS_STORAGE_KEY);
     setCompanies(updatedCompanies);
     setActiveMenu(null);
+  };
+
+  const handleDeleteCompany = async (company: CompanyType) => {
+    const confirmMessage = `ATENÇÃO: EXCLUSÃO PERMANENTE\n\nTem certeza que deseja EXCLUIR a empresa "${company.name}" e todo o acesso do administrador?\n\nEsta ação não pode ser desfeita e os dados da empresa ficarão inacessíveis.`;
+    
+    if (!confirm(confirmMessage)) return;
+
+    // 1. Excluir a empresa (Tenant)
+    await databaseService.deleteOne<CompanyType>(TENANTS_TABLE_NAME, TENANTS_STORAGE_KEY, company.id);
+
+    // 2. Excluir o usuário Admin vinculado (Account)
+    const allUsers = await databaseService.fetch<UserType>(ACCOUNTS_TABLE_NAME, ACCOUNTS_STORAGE_KEY);
+    const adminUser = allUsers.find(u => u.companyId === company.id && u.role === UserRole.COMPANY_ADMIN);
+    
+    if (adminUser) {
+        await databaseService.deleteOne<UserType>(ACCOUNTS_TABLE_NAME, ACCOUNTS_STORAGE_KEY, adminUser.id);
+    }
+
+    // Atualizar lista
+    const updatedCompanies = await databaseService.fetch<CompanyType>(TENANTS_TABLE_NAME, TENANTS_STORAGE_KEY);
+    setCompanies(updatedCompanies);
+    setActiveMenu(null);
+    alert('Empresa e acesso administrativo excluídos com sucesso.');
   };
 
   const handleLoginAs = async (company: CompanyType) => {
@@ -183,24 +207,6 @@ export const SuperAdmin: React.FC = () => {
     }
   };
 
-  const handleResetSystem = async () => {
-    if (confirm('ATENÇÃO: Isso apagará TODAS as empresas, usuários, estoque e financeiro permanentemente. Deseja continuar?')) {
-      const tablesToClear = ['tenants', 'accounts', 'inventory', 'os', 'finance', 'customers'];
-      const storageKeysToClear = [
-        'multiplus_tenants', 
-        'multiplus_accounts', 
-        'multiplus_inventory', 
-        'multiplus_os', 
-        'multiplus_finance', 
-        'multiplus_customers'
-      ];
-      await databaseService.clearAll(tablesToClear, storageKeysToClear);
-      setCompanies([]);
-      alert('Sistema resetado com sucesso.');
-      window.location.reload();
-    }
-  };
-
   const filteredCompanies = companies.filter((c: CompanyType) => 
     c.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -227,12 +233,6 @@ export const SuperAdmin: React.FC = () => {
         </div>
         <div className="flex gap-3">
           <button 
-            onClick={handleResetSystem}
-            className="flex items-center justify-center px-4 py-4 bg-rose-50 text-rose-600 rounded-[1.5rem] font-black hover:bg-rose-100 transition-all uppercase tracking-widest text-[10px]"
-          >
-            <RefreshCcw size={16} className="mr-2" /> Reset Total
-          </button>
-          <button 
             onClick={() => setIsModalOpen(true)}
             className="flex items-center justify-center px-6 py-4 bg-indigo-600 text-white rounded-[1.5rem] font-black shadow-2xl hover:bg-indigo-700 transition-all uppercase tracking-widest text-xs"
           >
@@ -257,7 +257,7 @@ export const SuperAdmin: React.FC = () => {
         </div>
       </div>
 
-      <div className="bg-white rounded-[3rem] border border-slate-100 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-[3rem] border border-slate-100 shadow-sm overflow-hidden min-h-[400px]">
         <div className="p-8 border-b border-slate-50 flex items-center justify-between gap-4">
            <h3 className="text-xl font-black text-slate-900">Carteira de Clientes</h3>
            <div className="relative max-w-xs w-full">
@@ -312,8 +312,11 @@ export const SuperAdmin: React.FC = () => {
                         <button onClick={() => handleSendCredentials(c)} className="w-full flex items-center px-6 py-3 text-xs text-emerald-600 font-black hover:bg-emerald-50 transition-all uppercase tracking-widest"><MessageCircle size={14} className="mr-3" /> Enviar Acesso</button>
                         <button onClick={() => openPasswordModal(c)} className="w-full flex items-center px-6 py-3 text-xs text-amber-600 font-black hover:bg-amber-50 transition-all uppercase tracking-widest"><Key size={14} className="mr-3" /> Alterar Senha</button>
                         <div className="h-px bg-slate-50 my-2 mx-4"></div>
-                        <button onClick={() => toggleCompanyStatus(c.id)} className={`w-full flex items-center px-6 py-3 text-xs font-black hover:bg-rose-50 transition-all uppercase tracking-widest ${c.status === CompanyStatus.ACTIVE ? 'text-rose-600' : 'text-emerald-600'}`}>
-                          {c.status === CompanyStatus.ACTIVE ? <><Ban size={14} className="mr-3" /> Bloquear (Inadimplência)</> : <><UserCheck size={14} className="mr-3" /> Reativar Acesso</>}
+                        <button onClick={() => toggleCompanyStatus(c.id)} className={`w-full flex items-center px-6 py-3 text-xs font-black hover:bg-slate-50 transition-all uppercase tracking-widest ${c.status === CompanyStatus.ACTIVE ? 'text-amber-600' : 'text-emerald-600'}`}>
+                          {c.status === CompanyStatus.ACTIVE ? <><Ban size={14} className="mr-3" /> Bloquear</> : <><UserCheck size={14} className="mr-3" /> Reativar</>}
+                        </button>
+                        <button onClick={() => handleDeleteCompany(c)} className="w-full flex items-center px-6 py-3 text-xs text-rose-600 font-black hover:bg-rose-50 transition-all uppercase tracking-widest">
+                           <Trash2 size={14} className="mr-3" /> Excluir
                         </button>
                       </div>
                     )}
@@ -323,16 +326,6 @@ export const SuperAdmin: React.FC = () => {
             </tbody>
           </table>
         </div>
-      </div>
-
-      <div className="bg-rose-50/50 p-10 rounded-[3rem] border border-rose-100 border-dashed flex items-center justify-between">
-         <div>
-            <h3 className="text-lg font-black text-rose-900 uppercase">Zona de Perigo</h3>
-            <p className="text-sm text-rose-600 font-medium">Use com extrema cautela. Limpa todo o ecossistema.</p>
-         </div>
-         <button onClick={handleResetSystem} className="flex items-center gap-3 px-8 py-4 bg-rose-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-lg hover:bg-rose-700 transition-all">
-            <Trash2 size={18} /> Apagar Tudo
-         </button>
       </div>
 
       {isModalOpen && (

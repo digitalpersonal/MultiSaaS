@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, Mail, Lock, LogIn, AlertCircle, Building2, Zap, MessageCircle, Eye, EyeOff, Crown, Ban, Download } from 'lucide-react';
+import { ShieldCheck, Mail, Lock, LogIn, AlertCircle, Building2, Zap, MessageCircle, Eye, EyeOff, Crown, Ban, Download, Cloud, CloudOff } from 'lucide-react';
 import { UserRole, CompanyStatus, User as UserType, Company } from '../types';
-import { databaseService } from '../services/databaseService'; // Import databaseService
+import { databaseService } from '../services/databaseService';
+import { isCloudEnabled } from '../services/supabase';
 
 interface LoginProps {
   onLogin: (user: any) => void;
@@ -14,18 +15,20 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [installPrompt, setInstallPrompt] = useState<any>(null);
+  const [cloudStatus, setCloudStatus] = useState<boolean>(false);
 
   const isMasterEmail = email.trim().toLowerCase() === 'digitalpersonal@gmail.com';
 
-  // Efeito para capturar o evento de instalação do PWA na tela de login
   useEffect(() => {
+    // Verifica status da conexão com a nuvem
+    setCloudStatus(isCloudEnabled());
+
     const handleBeforeInstallPrompt = (e: any) => {
       e.preventDefault();
       setInstallPrompt(e);
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     };
@@ -45,11 +48,15 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
     setError(null);
     setIsLoading(true);
 
+    // Normalização: Remove espaços do começo/fim e coloca email em minúsculo
     const normalizedEmail = email.trim().toLowerCase();
+    // Normalização: Remove espaços da senha (comum em copy-paste no celular)
+    const normalizedPassword = password.trim();
 
-    setTimeout(async () => { // Use setTimeout for async operations to simulate network latency
-      // 1. MASTER ADMIN
-      if (normalizedEmail === 'digitalpersonal@gmail.com' && password === 'Mld3602#?+') {
+    // Pequeno delay para feedback visual
+    setTimeout(async () => { 
+      // 1. MASTER ADMIN (Hardcoded para recuperação/emergência)
+      if (normalizedEmail === 'digitalpersonal@gmail.com' && normalizedPassword === 'Mld3602#?+') {
         onLogin({
           id: '936d5924-0115-47d4-9851-b245f1d2ac5d',
           name: 'Silvio T. de Sá Filho',
@@ -61,34 +68,42 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
         return;
       }
 
-      // 2. TENANTS
+      // 2. TENANTS (Busca no Banco)
       try {
         const savedAccounts = await databaseService.fetch<UserType>('accounts', 'multiplus_accounts');
         const tenants = await databaseService.fetch<Company>('tenants', 'multiplus_tenants');
         
-        const foundAccount = savedAccounts.find((acc: UserType) => 
-          acc.email.trim().toLowerCase() === normalizedEmail && acc.password === password
+        // Diagnóstico preciso
+        const userExists = savedAccounts.find((acc: UserType) => 
+          acc.email.trim().toLowerCase() === normalizedEmail
         );
 
-        if (foundAccount) {
-          const company = tenants.find((t: Company) => t.id === foundAccount.companyId);
-          
-          if (company && company.status === CompanyStatus.SUSPENDED) {
-            setError('ESTA UNIDADE ESTÁ SUSPENSA. ENTRE EM CONTATO COM O SUPORTE PARA REGULARIZAR.');
-            setIsLoading(false);
-            return;
-          }
-
-          onLogin(foundAccount);
+        if (userExists) {
+           // Verifica a senha (comparando ambas sem espaços extras)
+           if (userExists.password.trim() === normalizedPassword) {
+              const company = tenants.find((t: Company) => t.id === userExists.companyId);
+              
+              if (company && company.status === CompanyStatus.SUSPENDED) {
+                setError('ACESSO BLOQUEADO. A UNIDADE ESTÁ SUSPENSA.');
+              } else {
+                onLogin(userExists);
+              }
+           } else {
+              setError('SENHA INCORRETA. Tente digitar novamente.');
+           }
         } else {
-          setError('E-MAIL OU SENHA INCORRETOS. ACESSO RESTRITO.');
+           if (savedAccounts.length === 0 && cloudStatus) {
+              setError('ERRO CRÍTICO: Banco de dados vazio. Contate o suporte.');
+           } else {
+              setError('E-MAIL NÃO ENCONTRADO. Verifique o cadastro.');
+           }
         }
       } catch (err) {
         console.error("Erro ao buscar dados de login:", err);
-        setError('OCORREU UM ERRO AO TENTAR FAZER LOGIN. TENTE NOVAMENTE MAIS TARDE.');
+        setError('ERRO DE CONEXÃO. Verifique sua internet.');
       }
       setIsLoading(false);
-    }, 800);
+    }, 1000);
   };
 
   const handleContactSupport = () => {
@@ -96,7 +111,17 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-indigo-100 via-slate-50 to-white">
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-indigo-100 via-slate-50 to-white relative">
+      
+      {/* Indicador de Status do Servidor */}
+      <div className="absolute top-6 right-6 flex items-center gap-2 px-4 py-2 bg-white/50 backdrop-blur-md rounded-full shadow-sm border border-slate-200" title={cloudStatus ? "Conectado à Nuvem (Acesso Multi-dispositivo)" : "Modo Local (Dados apenas neste dispositivo)"}>
+         {cloudStatus ? (
+            <><div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div><Cloud size={14} className="text-slate-500"/><span className="text-[10px] font-bold text-slate-500 uppercase">Cloud On</span></>
+         ) : (
+            <><div className="w-2 h-2 rounded-full bg-slate-400"></div><CloudOff size={14} className="text-slate-400"/><span className="text-[10px] font-bold text-slate-400 uppercase">Local Mode</span></>
+         )}
+      </div>
+
       <div className="w-full max-w-md">
         <div className="text-center mb-10">
           <div className="w-20 h-20 bg-indigo-600 rounded-[2.5rem] flex items-center justify-center mx-auto mb-6 shadow-2xl shadow-indigo-200">
@@ -112,20 +137,20 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
           <form className="space-y-8" onSubmit={handleSubmit}>
             {error && (
               <div className="p-5 bg-rose-50 border border-rose-100 rounded-3xl text-rose-600 text-[10px] font-black flex items-center gap-4 animate-shake uppercase tracking-tight leading-relaxed">
-                {error.includes('SUSPENSA') ? <Ban size={24} /> : <AlertCircle size={24} />} {error}
+                {error.includes('SUSPENSA') || error.includes('BLOQUEADO') ? <Ban size={24} /> : <AlertCircle size={24} />} {error}
               </div>
             )}
 
             <div>
-              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">E-mail</label>
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">E-mail ou Usuário</label>
               <div className="relative">
                 <Mail className={`absolute left-5 top-1/2 -translate-y-1/2 ${isMasterEmail ? 'text-indigo-600' : 'text-slate-300'}`} size={20} />
                 <input 
-                  type="email" 
+                  type="text" 
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full pl-14 pr-6 py-5 bg-slate-50 border-none rounded-3xl focus:ring-4 focus:ring-indigo-500/10 text-sm font-black outline-none transition-all" 
-                  placeholder="seu@email.com"
+                  placeholder="usuario@empresa.com"
                   required 
                 />
               </div>
