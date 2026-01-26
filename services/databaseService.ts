@@ -1,6 +1,6 @@
 
 import { supabase, isCloudEnabled } from './supabase';
-import { User } from '../types';
+import { User, Company, UserRole, CompanyStatus } from '../types';
 
 /**
  * Obtém o companyId do usuário logado (do localStorage) para filtrar dados.
@@ -191,6 +191,64 @@ export const databaseService = {
         const { error } = await supabase.from(table).delete().neq('id', 'NULL');
         if (error) console.error(`Erro ao limpar a tabela Supabase ${table}:`, error);
       }
+    }
+  },
+
+  async seedInitialData(): Promise<void> {
+    if (!isCloudEnabled() || !supabase) {
+      return;
+    }
+
+    const { data: tenants, error: tenantsError } = await supabase.from('tenants').select('id').limit(1);
+
+    if (tenantsError) {
+      console.error("Erro ao verificar tenants:", tenantsError);
+      return;
+    }
+
+    // Se já existem tenants, não faz nada.
+    if (tenants && tenants.length > 0) {
+      console.log("Banco de dados já populado. Nenhuma ação de semeadura necessária.");
+      return;
+    }
+
+    console.log("Banco de dados vazio. Semeando dados iniciais da UP Color...");
+
+    const uocolorCompany: Company = {
+      id: 'comp_uocolor_demo',
+      name: 'UP Color',
+      plan: 'PRO',
+      status: CompanyStatus.ACTIVE,
+      profileCompleted: false,
+      currency: 'BRL',
+      taxRate: 0,
+      serviceFeeRate: 0,
+      creditCardFee: 4.99,
+      debitCardFee: 1.99,
+      adminEmail: 'uocolor@gmail.com'
+    };
+    
+    const uocolorAdmin: User = {
+      id: 'user_uocolor_admin',
+      companyId: 'comp_uocolor_demo',
+      name: 'Administrador UP Color',
+      email: 'uocolor@gmail.com',
+      password: '123456',
+      role: UserRole.COMPANY_ADMIN
+    };
+
+    const { error: companyInsertError } = await supabase.from('tenants').insert(uocolorCompany);
+    if (companyInsertError) {
+      console.error("Erro ao semear empresa:", companyInsertError);
+    } else {
+      console.log("Empresa 'UP Color' semeada com sucesso.");
+    }
+    
+    const { error: userInsertError } = await supabase.from('accounts').insert(uocolorAdmin);
+    if (userInsertError) {
+      console.error("Erro ao semear usuário admin:", userInsertError);
+    } else {
+      console.log("Usuário admin 'uocolor@gmail.com' semeado com sucesso.");
     }
   }
 };

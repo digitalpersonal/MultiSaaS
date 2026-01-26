@@ -14,12 +14,19 @@ import { SuperAdmin } from './pages/SuperAdmin';
 import { Budgets } from './pages/Budgets'; // Importa a nova página
 import { Login } from './pages/Login';
 import { User, UserRole } from './types';
+import { databaseService } from './services/databaseService';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(() => {
     const savedUser = localStorage.getItem('multiplus_user');
     return savedUser ? JSON.parse(savedUser) : null;
   });
+
+  useEffect(() => {
+    // Semeia os dados iniciais se o banco de dados na nuvem estiver vazio.
+    // Isso garante que a empresa de demonstração "UP Color" exista.
+    databaseService.seedInitialData();
+  }, []); // O array vazio garante que isso rode apenas uma vez.
 
   const handleLogin = (userData: User) => {
     setUser(userData);
