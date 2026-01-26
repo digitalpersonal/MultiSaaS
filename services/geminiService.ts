@@ -8,16 +8,17 @@ export const getBusinessInsights = async (data: any) => {
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: `Analise os seguintes dados financeiros e de estoque de uma empresa e forneça 3 insights rápidos e acionáveis em Português: ${JSON.stringify(data)}`,
+      contents: `Analise estes dados empresariais e forneça 3 insights estratégicos, curtos e diretos em Português do Brasil: ${JSON.stringify(data)}`,
       config: {
-        systemInstruction: "Você é um consultor financeiro sênior especializado em pequenas e médias empresas.",
+        systemInstruction: "Você é um consultor de negócios experiente especializado em pequenas e médias empresas brasileiras. Forneça conselhos práticos sobre faturamento, estoque e atendimento ao cliente, sempre em Português (Brasil).",
         temperature: 0.7,
       },
     });
     // Use .text property directly instead of text() method.
-    return response.text;
+    return response.text || "Insights indisponíveis no momento.";
   } catch (error) {
-    console.error("Error fetching insights:", error);
-    return "Não foi possível gerar insights no momento.";
+    console.error("Erro ao gerar insights:", error);
+    // User-friendly error message for production
+    return "Não foi possível gerar insights automáticos agora. Por favor, verifique seus relatórios manuais ou tente novamente mais tarde.";
   }
 };

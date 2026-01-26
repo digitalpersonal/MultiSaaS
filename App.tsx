@@ -22,12 +22,6 @@ const App: React.FC = () => {
     return savedUser ? JSON.parse(savedUser) : null;
   });
 
-  useEffect(() => {
-    // Semeia os dados iniciais se o banco de dados na nuvem estiver vazio.
-    // Isso garante que a empresa de demonstração "UP Color" exista.
-    databaseService.seedInitialData();
-  }, []); // O array vazio garante que isso rode apenas uma vez.
-
   const handleLogin = (userData: User) => {
     setUser(userData);
     localStorage.setItem('multiplus_user', JSON.stringify(userData));

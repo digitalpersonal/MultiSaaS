@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { ShieldCheck, Mail, Lock, LogIn, AlertCircle, Building2, Zap, MessageCircle, Eye, EyeOff, Crown, Ban, Download, Cloud, CloudOff } from 'lucide-react';
 import { UserRole, CompanyStatus, User as UserType, Company } from '../types';
@@ -93,7 +94,9 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
            }
         } else {
            if (savedAccounts.length === 0 && cloudStatus) {
-              setError('ERRO CRÍTICO: Banco de dados vazio. Contate o suporte.');
+              setError('Primeiro acesso detectado. Preparando o ambiente de demonstração...');
+              await databaseService.seedInitialData();
+              setError('Ambiente criado! Tente novamente com: juliodaavid@hotmail.com / senha: annaejulio2026');
            } else {
               setError('E-MAIL NÃO ENCONTRADO. Verifique o cadastro.');
            }

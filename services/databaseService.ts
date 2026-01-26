@@ -1,6 +1,6 @@
 
 import { supabase, isCloudEnabled } from './supabase';
-import { User, Company, UserRole, CompanyStatus } from '../types';
+import { User, Company, UserRole, CompanyStatus, Customer, ServiceOrder, OSStatus } from '../types';
 
 /**
  * Obtém o companyId do usuário logado (do localStorage) para filtrar dados.
@@ -92,30 +92,25 @@ export const databaseService = {
   async insertOne<T extends { id: string, companyId?: string }>(table: string, storageKey: string, item: T): Promise<void> {
     const companyId = getCurrentCompanyId();
     
-    // Injeta companyId se necessário, exceto tenants/accounts que já devem vir corretos ou são globais
     if (companyId && table !== 'tenants' && table !== 'accounts') {
       item.companyId = companyId;
     }
 
-    // Primeiro tenta inserir no Supabase
+    // 1. Tenta persistir na nuvem
     if (isCloudEnabled() && supabase) {
       const { error } = await supabase.from(table).insert(item);
       if (error) {
         console.error(`Erro ao inserir item no Supabase na tabela ${table}:`, error);
-      } else {
-        // Se Supabase teve sucesso, atualiza o localStorage (cache)
-        const current = await databaseService.fetch<T>(table, storageKey);
-        
-        const updated = [item, ...current.filter(existingItem => existingItem.id !== item.id)];
-        await databaseService.save<T>(table, storageKey, updated);
-        return;
+        // Lança o erro para que a função chamadora (componente) possa tratá-lo
+        throw new Error(`Falha no Supabase: ${error.message}`);
       }
     }
-    
-    // Fallback LocalStorage
-    const current = await databaseService.fetch<T>(table, storageKey); // Pega o contexto atual
-    const updated = [item, ...current.filter((existingItem: T) => existingItem.id !== item.id)];
-    await databaseService.save<T>(table, storageKey, updated);
+
+    // 2. Persiste/atualiza o cache local (LocalStorage)
+    // Esta operação agora é mais simples e direta.
+    const currentLocalData = JSON.parse(localStorage.getItem(storageKey) || '[]') as T[];
+    const updatedLocalData = [item, ...currentLocalData.filter(existingItem => existingItem.id !== item.id)];
+    localStorage.setItem(storageKey, JSON.stringify(updatedLocalData));
   },
 
   async updateOne<T extends { id: string, companyId?: string }>(table: string, storageKey: string, itemId: string, updates: Partial<T>): Promise<void> {
@@ -225,30 +220,52 @@ export const databaseService = {
       serviceFeeRate: 0,
       creditCardFee: 4.99,
       debitCardFee: 1.99,
-      adminEmail: 'uocolor@gmail.com'
+      adminEmail: 'juliodaavid@hotmail.com'
     };
     
     const uocolorAdmin: User = {
       id: 'user_uocolor_admin',
       companyId: 'comp_uocolor_demo',
-      name: 'Administrador UP Color',
-      email: 'uocolor@gmail.com',
-      password: '123456',
+      name: 'Júlio David',
+      email: 'juliodaavid@hotmail.com',
+      password: 'annaejulio2026',
       role: UserRole.COMPANY_ADMIN
     };
-
-    const { error: companyInsertError } = await supabase.from('tenants').insert(uocolorCompany);
-    if (companyInsertError) {
-      console.error("Erro ao semear empresa:", companyInsertError);
-    } else {
-      console.log("Empresa 'UP Color' semeada com sucesso.");
-    }
     
-    const { error: userInsertError } = await supabase.from('accounts').insert(uocolorAdmin);
-    if (userInsertError) {
-      console.error("Erro ao semear usuário admin:", userInsertError);
-    } else {
-      console.log("Usuário admin 'uocolor@gmail.com' semeado com sucesso.");
-    }
+    const sampleCustomer: Customer = {
+        id: 'cust_ana_silva',
+        companyId: 'comp_uocolor_demo',
+        name: 'Ana Silva',
+        email: 'ana.silva@email.com',
+        phone: '35991234567',
+        taxId: '123.456.789-00',
+        type: 'INDIVIDUAL'
+    };
+
+    const sampleOS: ServiceOrder = {
+        id: 'OS-DEMO-001',
+        companyId: 'comp_uocolor_demo',
+        customerId: 'cust_ana_silva',
+        customerName: 'Ana Silva',
+        device: 'iPhone 12',
+        defect: 'Tela não liga após queda.',
+        status: OSStatus.IN_ANALYSIS,
+        price: 0,
+        date: new Date().toISOString(),
+        deviceCondition: 'Tela trincada no canto superior direito.'
+    };
+
+    // Insere os dados em sequência
+    await supabase.from('tenants').insert(uocolorCompany);
+    console.log("Empresa 'UP Color' semeada.");
+    
+    await supabase.from('accounts').insert(uocolorAdmin);
+    console.log("Usuário admin 'juliodaavid@hotmail.com' semeado.");
+    
+    await supabase.from('customers').insert(sampleCustomer);
+    console.log("Cliente 'Ana Silva' semeado.");
+
+    await supabase.from('os').insert(sampleOS);
+    console.log("Ordem de Serviço de demonstração semeada.");
   }
 };

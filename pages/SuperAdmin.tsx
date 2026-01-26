@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { 
   Building2, 
@@ -40,6 +41,7 @@ export const SuperAdmin: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRegistering, setIsRegistering] = useState(false); // Novo estado de carregamento
 
   // Form States para Nova Empresa
   const [companyName, setCompanyName] = useState('');
@@ -64,45 +66,58 @@ export const SuperAdmin: React.FC = () => {
 
   const handleRegisterCompany = async (e: React.FormEvent) => {
     e.preventDefault();
-    const tenantId = `comp_${Math.random().toString(36).substr(2, 9)}`;
-    
-    // Normalização crítica para login consistente
-    const safeEmail = adminEmail.trim().toLowerCase();
-    
-    const newCompany: CompanyType = {
-      id: tenantId,
-      name: companyName,
-      plan: 'PRO',
-      status: CompanyStatus.ACTIVE,
-      profileCompleted: false,
-      currency: 'BRL', 
-      taxRate: 0, 
-      serviceFeeRate: 0, 
-      adminEmail: safeEmail 
-    };
+    setIsRegistering(true);
+    try {
+      const tenantId = `comp_${Math.random().toString(36).substr(2, 9)}`;
+      const safeEmail = adminEmail.trim().toLowerCase();
 
-    const newUser: UserType = {
-      id: `user_${Math.random().toString(36).substr(2, 9)}`,
-      companyId: tenantId,
-      name: `Empresário ${companyName}`,
-      email: safeEmail,
-      password: adminPassword,
-      role: UserRole.COMPANY_ADMIN
-    };
+      // Verificação de e-mail duplicado
+      const allUsers = await databaseService.fetch<UserType>(ACCOUNTS_TABLE_NAME, ACCOUNTS_STORAGE_KEY);
+      if (allUsers.some(user => user.email === safeEmail)) {
+        alert('ERRO: Este e-mail de administrador já está em uso.');
+        setIsRegistering(false);
+        return;
+      }
 
-    await databaseService.insertOne<CompanyType>(TENANTS_TABLE_NAME, TENANTS_STORAGE_KEY, newCompany);
-    await databaseService.insertOne<UserType>(ACCOUNTS_TABLE_NAME, ACCOUNTS_STORAGE_KEY, newUser);
+      const newCompany: CompanyType = {
+        id: tenantId,
+        name: companyName,
+        plan: 'PRO',
+        status: CompanyStatus.ACTIVE,
+        profileCompleted: false,
+        currency: 'BRL',
+        taxRate: 0,
+        serviceFeeRate: 0,
+        adminEmail: safeEmail
+      };
 
-    const updatedCompanies = await databaseService.fetch<CompanyType>(TENANTS_TABLE_NAME, TENANTS_STORAGE_KEY);
-    setCompanies(updatedCompanies);
+      const newUser: UserType = {
+        id: `user_${Math.random().toString(36).substr(2, 9)}`,
+        companyId: tenantId,
+        name: `Empresário ${companyName}`,
+        email: safeEmail,
+        password: adminPassword,
+        role: UserRole.COMPANY_ADMIN
+      };
 
-    setIsModalOpen(false);
-    
-    setCompanyName('');
-    setAdminEmail('');
-    setAdminPassword('');
+      await databaseService.insertOne<CompanyType>(TENANTS_TABLE_NAME, TENANTS_STORAGE_KEY, newCompany);
+      await databaseService.insertOne<UserType>(ACCOUNTS_TABLE_NAME, ACCOUNTS_STORAGE_KEY, newUser);
 
-    alert(`AMBIENTE PROVISIONADO COM SUCESSO!\n\nUnidade: ${companyName}\nLogin: ${safeEmail}\n\nEnvie estes dados para o cliente.`);
+      const updatedCompanies = await databaseService.fetch<CompanyType>(TENANTS_TABLE_NAME, TENANTS_STORAGE_KEY);
+      setCompanies(updatedCompanies);
+
+      setIsModalOpen(false);
+      setCompanyName('');
+      setAdminEmail('');
+      setAdminPassword('');
+
+      alert(`AMBIENTE PROVISIONADO COM SUCESSO!\n\nUnidade: ${companyName}\nLogin: ${safeEmail}\n\nEnvie estes dados para o cliente.`);
+    } catch (error: any) {
+      console.error("Falha ao provisionar unidade:", error);
+      alert(`ERRO CRÍTICO: Não foi possível provisionar a nova unidade.\n\nDetalhes: ${error.message}\n\nVerifique se o e-mail já existe ou contate o suporte.`);
+    } finally {
+      setIsRegistering(false);
+    }
   };
 
   const toggleCompanyStatus = async (id: string) => {
@@ -340,7 +355,20 @@ export const SuperAdmin: React.FC = () => {
                <input type="text" value={companyName} onChange={e => setCompanyName(e.target.value)} className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none" placeholder="Nome Fantasia..." required />
                <input type="email" value={adminEmail} onChange={e => setAdminEmail(e.target.value)} className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none" placeholder="Email do Empresário..." required />
                <input type="text" value={adminPassword} onChange={e => setAdminPassword(e.target.value)} className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none" placeholder="Senha Provisória..." required />
-               <button type="submit" className="w-full py-5 bg-indigo-600 text-white rounded-[2rem] font-black uppercase tracking-widest text-xs shadow-xl hover:bg-indigo-700 transition-all">Criar Ambiente e Acesso</button>
+               <button 
+                 type="submit" 
+                 disabled={isRegistering}
+                 className="w-full py-5 bg-indigo-600 text-white rounded-[2rem] font-black uppercase tracking-widest text-xs shadow-xl hover:bg-indigo-700 transition-all flex items-center justify-center gap-3 disabled:opacity-60"
+               >
+                 {isRegistering ? (
+                   <>
+                     <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                     Provisionando...
+                   </>
+                 ) : (
+                   'Criar Ambiente e Acesso'
+                 )}
+               </button>
             </form>
           </div>
         </div>
