@@ -10,9 +10,13 @@ import { User } from '../types';
 const getCurrentCompanyId = (): string | undefined => {
   const userString = localStorage.getItem('multiplus_user');
   if (userString) {
-    const user: User = JSON.parse(userString);
-    if (user.role !== 'SUPER_ADMIN') {
-      return user.companyId;
+    try {
+      const user: User = JSON.parse(userString);
+      if (user.role !== 'SUPER_ADMIN') {
+        return user.companyId;
+      }
+    } catch (e) {
+      console.error("Erro ao processar dados do usuário:", e);
     }
   }
   return undefined;
@@ -30,12 +34,13 @@ export const databaseService = {
     const companyId = getCurrentCompanyId();
 
     if (isCloudEnabled() && supabase) {
-      // RLS-COMPLIANT: A query foi simplificada. O Supabase agora é responsável por filtrar
-      // os dados com base no usuário autenticado. O filtro de companyId foi removido do cliente.
-      const { data, error } = await supabase.from(table).select('*');
-      
-      if (!error && data) return data as T[];
-      console.error(`Erro ao buscar dados do Supabase na tabela ${table}:`, error);
+      try {
+        const { data, error } = await supabase.from(table).select('*');
+        if (!error && data) return data as T[];
+        console.error(`Erro ao buscar dados do Supabase na tabela ${table}:`, error);
+      } catch (e) {
+        console.error("Exceção na conexão Cloud:", e);
+      }
     }
     
     // Fallback para LocalStorage (mantém a filtragem do lado do cliente)
@@ -63,10 +68,13 @@ export const databaseService = {
     }
 
     if (isCloudEnabled() && supabase) {
-      const { error } = await supabase.from(table).upsert(dataToSave, { onConflict: 'id' });
-      if (error) {
-        console.error(`Erro ao sincronizar ${table} no Supabase:`, error);
-        return; 
+      try {
+        const { error } = await supabase.from(table).upsert(dataToSave, { onConflict: 'id' });
+        if (error) {
+          console.error(`Erro ao sincronizar ${table} no Supabase:`, error);
+        }
+      } catch (e) {
+        console.error("Exceção ao salvar na Cloud:", e);
       }
     }
     
@@ -91,14 +99,18 @@ export const databaseService = {
     }
 
     if (isCloudEnabled() && supabase) {
-      const { error } = await supabase.from(table).insert(item);
-      if (error) {
-        console.error(`Erro ao inserir item no Supabase na tabela ${table}:`, error);
-      } else {
-        const current = await databaseService.fetch<T>(table, storageKey);
-        const updated = [item, ...current.filter(existingItem => existingItem.id !== item.id)];
-        await databaseService.save<T>(table, storageKey, updated);
-        return;
+      try {
+        const { error } = await supabase.from(table).insert(item);
+        if (error) {
+          console.error(`Erro ao inserir item no Supabase na tabela ${table}:`, error);
+        } else {
+          const current = await databaseService.fetch<T>(table, storageKey);
+          const updated = [item, ...current.filter(existingItem => existingItem.id !== item.id)];
+          await databaseService.save<T>(table, storageKey, updated);
+          return;
+        }
+      } catch (e) {
+        console.error("Exceção ao inserir na Cloud:", e);
       }
     }
     
@@ -112,18 +124,18 @@ export const databaseService = {
    */
   async updateOne<T extends { id: string, companyId?: string }>(table: string, storageKey: string, itemId: string, updates: Partial<T>): Promise<void> {
     if (isCloudEnabled() && supabase) {
-      // RLS-COMPLIANT: O filtro de segurança de companyId foi removido.
-      // A política de UPDATE (RLS) no Supabase irá garantir que o usuário só pode
-      // atualizar os itens que lhe pertencem.
-      const { error } = await supabase.from(table).update(updates).eq('id', itemId);
-
-      if (error) {
-        console.error(`Erro ao atualizar item no Supabase na tabela ${table}:`, error);
-      } else {
-        const current = await databaseService.fetch<T>(table, storageKey);
-        const updated = current.map(item => item.id === itemId ? { ...item, ...updates } : item);
-        await databaseService.save<T>(table, storageKey, updated);
-        return;
+      try {
+        const { error } = await supabase.from(table).update(updates).eq('id', itemId);
+        if (error) {
+          console.error(`Erro ao atualizar item no Supabase na tabela ${table}:`, error);
+        } else {
+          const current = await databaseService.fetch<T>(table, storageKey);
+          const updated = current.map(item => item.id === itemId ? { ...item, ...updates } : item);
+          await databaseService.save<T>(table, storageKey, updated);
+          return;
+        }
+      } catch (e) {
+        console.error("Exceção ao atualizar na Cloud:", e);
       }
     }
 
@@ -137,17 +149,18 @@ export const databaseService = {
    */
   async deleteOne<T extends { id: string, companyId?: string }>(table: string, storageKey: string, itemId: string): Promise<void> {
     if (isCloudEnabled() && supabase) {
-      // RLS-COMPLIANT: Filtro de companyId removido. A política de DELETE (RLS)
-      // no Supabase cuidará da segurança.
-      const { error } = await supabase.from(table).delete().eq('id', itemId);
-
-      if (error) {
-        console.error(`Erro ao deletar item no Supabase na tabela ${table}:`, error);
-      } else {
-        const current = await databaseService.fetch<T>(table, storageKey);
-        const updated = current.filter(item => item.id !== itemId);
-        await databaseService.save<T>(table, storageKey, updated);
-        return;
+      try {
+        const { error } = await supabase.from(table).delete().eq('id', itemId);
+        if (error) {
+          console.error(`Erro ao deletar item no Supabase na tabela ${table}:`, error);
+        } else {
+          const current = await databaseService.fetch<T>(table, storageKey);
+          const updated = current.filter(item => item.id !== itemId);
+          await databaseService.save<T>(table, storageKey, updated);
+          return;
+        }
+      } catch (e) {
+        console.error("Exceção ao deletar na Cloud:", e);
       }
     }
 
@@ -162,8 +175,11 @@ export const databaseService = {
 
     if (isCloudEnabled() && supabase) {
       for (const table of tables) {
-        const { error } = await supabase.from(table).delete().neq('id', 'NULL');
-        if (error) console.error(`Erro ao limpar a tabela Supabase ${table}:`, error);
+        try {
+          await supabase.from(table).delete().neq('id', 'NULL');
+        } catch (e) {
+          console.error(`Erro ao limpar a tabela Supabase ${table}:`, e);
+        }
       }
     }
   }
