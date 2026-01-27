@@ -14,7 +14,6 @@ import { SuperAdmin } from './pages/SuperAdmin';
 import { Budgets } from './pages/Budgets'; // Importa a nova página
 import { Login } from './pages/Login';
 import { User, UserRole } from './types';
-import { databaseService } from './services/databaseService';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(() => {
