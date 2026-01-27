@@ -1,3 +1,5 @@
+
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, Search, X, CheckCircle2, Wrench, ClipboardCheck, Smartphone, Camera, Power, Volume2, Wifi, BatteryCharging, AlertTriangle, Clock, Edit2, Trash2, DollarSign, CreditCard, AlertCircle, Share2, Printer, Phone, FileText, ArrowRight, Lock, Hash, Package, Monitor, History, Settings, FileQuestion } from 'lucide-react';
 import { STATUS_COLORS, STATUS_LABELS } from '../constants';
@@ -154,6 +156,29 @@ export const ServiceOrders: React.FC = () => {
     resetForm();
   };
 
+  const handleDirectApproval = async (os: ServiceOrder) => {
+    if (os.price <= 0) {
+      alert("Por favor, edite a O.S. e defina um preço válido antes de aprovar o serviço.");
+      return;
+    }
+
+    const confirmMessage = `Aprovar diretamente o serviço para "${os.device}" no valor de ${formatToBRL(os.price)}?\n\nA O.S. será movida para o status 'Aguardando Peças'. Esta ação notificará o cliente.`;
+    
+    if (confirm(confirmMessage)) {
+      // 1. Atualizar o status da OS
+      await databaseService.updateOne<ServiceOrder>(OS_TABLE_NAME, OS_STORAGE_KEY, os.id, {
+        status: OSStatus.WAITING_PARTS
+      });
+
+      // 2. Atualizar a UI
+      const updatedOsList = await databaseService.fetch<ServiceOrder>(OS_TABLE_NAME, OS_STORAGE_KEY);
+      setOsList(updatedOsList.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+
+      // 3. Notificar o cliente
+      handleWhatsAppShare(os, 'DIRECT_APPROVAL');
+    }
+  };
+
   const handleDeleteOS = async (id: string) => {
     if (confirm('Tem certeza que deseja excluir esta Ordem de Serviço?')) {
       await databaseService.deleteOne<ServiceOrder>(OS_TABLE_NAME, OS_STORAGE_KEY, id);
@@ -247,7 +272,7 @@ export const ServiceOrders: React.FC = () => {
     setManualPhone('');
   };
 
-  const handleWhatsAppShare = (osParam?: ServiceOrder, type?: 'ENTRY' | 'COMPLETION') => {
+  const handleWhatsAppShare = (osParam?: ServiceOrder, type?: 'ENTRY' | 'COMPLETION' | 'DIRECT_APPROVAL') => {
     const targetOS = osParam || lastProcessedOS;
     const mode = type || successMode;
 
@@ -282,7 +307,16 @@ export const ServiceOrders: React.FC = () => {
                   `\n⏳ *Status:* Em Análise Técnica\n` +
                   `Assim que tivermos o diagnóstico e orçamento, entraremos em contato!\n\n` +
                   `Obrigado pela preferência!`;
-    } else {
+    } else if (mode === 'DIRECT_APPROVAL') {
+        message = `*SERVIÇO APROVADO - ${companyName}* ✅\n\n` +
+                  `Olá *${targetOS.customerName}*!\n` +
+                  `O serviço para seu aparelho *${targetOS.device}* foi APROVADO.\n\n` +
+                  `📋 *Protocolo:* ${targetOS.id}\n` +
+                  `💰 *Valor Final:* ${formatToBRL(targetOS.price)}\n` +
+                  `\n⏳ *Status:* Aguardando Peças\n` +
+                  `Já estamos providenciando o necessário para o reparo e em breve ele irá para a bancada.\n\n` +
+                  `Obrigado pela confiança!`;
+    } else { // COMPLETION
         message = `*AVISO DE CONCLUSÃO - ${companyName}*\n\n` +
                   `Olá *${targetOS.customerName}*! ✅\n` +
                   `Seu aparelho está pronto para retirada!\n\n` +
@@ -419,6 +453,12 @@ export const ServiceOrders: React.FC = () => {
                          className="w-full py-3 bg-blue-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-200"
                        >
                           <FileText size={14} /> Fazer Orçamento
+                       </button>
+                       <button 
+                         onClick={() => handleDirectApproval(os)}
+                         className="w-full py-3 bg-emerald-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-emerald-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-200"
+                       >
+                          <CheckCircle2 size={14} /> Aprovar Serviço
                        </button>
                        <div className="flex gap-2">
                           <button onClick={() => handleWhatsAppShare(os, 'ENTRY')} className="flex-1 py-2 bg-emerald-50 text-emerald-600 rounded-xl font-bold text-[9px] uppercase hover:bg-emerald-100 flex items-center justify-center gap-1" title="Enviar Comprovante Entrada"><Share2 size={12}/> Whats</button>

@@ -180,13 +180,38 @@ export const Inventory: React.FC = () => {
                 </div>
                 <div className="space-y-4">
                    <input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none" placeholder="Nome do Item..." required />
-                   <div className="grid grid-cols-2 gap-4">
-                      <input type="text" value={sku} onChange={e => setSku(e.target.value)} className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none" placeholder="SKU" />
-                      <input type="text" value={itemType === 'PHYSICAL' ? stock : estimatedDuration} onChange={e => itemType === 'PHYSICAL' ? setStock(e.target.value) : setEstimatedDuration(e.target.value)} className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none" placeholder={itemType === 'PHYSICAL' ? 'Estoque' : 'Duração'} />
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">SKU / Código</label>
+                        <input type="text" value={sku} onChange={e => setSku(e.target.value)} className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none" placeholder="Código de Barras ou Interno" />
+                      </div>
+                      {itemType === 'PHYSICAL' ? (
+                        <div>
+                           <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">{editingProduct ? 'Estoque Atual (Ajuste)' : 'Estoque Inicial (Entrada)'}</label>
+                           <input type="number" value={stock} onChange={e => setStock(e.target.value)} className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none" placeholder={editingProduct ? 'Quantidade atual...' : 'Quantidade inicial...'} />
+                        </div>
+                      ) : (
+                        <div>
+                           <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Duração Estimada</label>
+                           <input type="text" value={estimatedDuration} onChange={e => setEstimatedDuration(e.target.value)} className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none" placeholder="Ex: 30 dias, 2 horas" />
+                        </div>
+                      )}
                    </div>
+                   {itemType === 'PHYSICAL' && (
+                     <div>
+                       <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Estoque Mínimo (Alerta)</label>
+                       <input type="number" value={minStock} onChange={e => setMinStock(e.target.value)} className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none" placeholder="Qtd para alerta de reposição" />
+                     </div>
+                   )}
                    <div className="grid grid-cols-2 gap-4">
-                      <input type="text" value={costValue} onChange={e => setCostValue(maskCurrencyInput(e.target.value))} className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none" placeholder="Custo R$" />
-                      <input type="text" value={saleValue} onChange={e => setSaleValue(maskCurrencyInput(e.target.value))} className="w-full px-6 py-4 bg-indigo-50 border-none rounded-2xl text-sm font-black text-indigo-600 outline-none" placeholder="Venda R$" required />
+                      <div>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Custo (R$)</label>
+                        <input type="text" value={costValue} onChange={e => setCostValue(maskCurrencyInput(e.target.value))} className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black outline-none" placeholder="0,00" />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Venda (R$)</label>
+                        <input type="text" value={saleValue} onChange={e => setSaleValue(maskCurrencyInput(e.target.value))} className="w-full px-6 py-4 bg-indigo-50 border-none rounded-2xl text-sm font-black text-indigo-600 outline-none" placeholder="0,00" required />
+                      </div>
                    </div>
                 </div>
                 <button type="submit" className="w-full py-5 bg-indigo-600 text-white rounded-[2rem] font-black shadow-xl hover:bg-indigo-700 transition-all uppercase tracking-widest text-xs">Sincronizar Item</button>

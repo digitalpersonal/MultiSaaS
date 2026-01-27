@@ -1,8 +1,11 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { Search, Plus, FileText, CheckCircle2, X, Trash2, Printer, Calendar, User, ShoppingCart, ArrowRight, DollarSign, Package, Share2, Phone, Zap, Wrench, ArrowUpRight, ArrowLeftCircle } from 'lucide-react';
 import { databaseService } from '../services/databaseService';
 import { Budget, BudgetItem, Product, Customer, UserRole, Transaction, Company, ServiceOrder, OSStatus } from '../types';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { BUDGET_STATUS_LABELS, BUDGET_STATUS_COLORS } from '../constants';
+
 
 const currencyFormatter = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const formatToBRL = (value: number) => currencyFormatter.format(value);
@@ -50,9 +53,6 @@ export const Budgets: React.FC = () => {
   const [showPhoneInput, setShowPhoneInput] = useState(false);
   const [manualPhone, setManualPhone] = useState('');
 
-  // Conversion Modal
-  const [budgetToProcess, setBudgetToProcess] = useState<Budget | null>(null);
-
   const getCurrentCompanyId = (): string | undefined => {
     const userString = localStorage.getItem('multiplus_user');
     if (userString) {
@@ -92,7 +92,7 @@ export const Budgets: React.FC = () => {
       }
     };
     loadData();
-  }, [companyId]);
+  }, [companyId, location.state]);
 
   const handleOpenModal = () => {
     setSelectedCustomer(null);
@@ -197,20 +197,29 @@ export const Budgets: React.FC = () => {
       setBudgets(updatedBudgets.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
     }
   };
-
-  const handleProcessBudget = (budget: Budget) => {
-    setBudgetToProcess(budget);
+  
+  const handleUpdateBudgetStatus = async (budgetId: string, newStatus: 'APPROVED' | 'REJECTED') => {
+    const confirmMessage = newStatus === 'APPROVED' 
+        ? 'Confirmar que o cliente APROVOU este orçamento?'
+        : 'Confirmar que o cliente REJEITOU este orçamento?';
+    
+    if (confirm(confirmMessage)) {
+        await databaseService.updateOne<Budget>(BUDGET_TABLE_NAME, BUDGET_STORAGE_KEY, budgetId, { status: newStatus });
+        
+        const updatedBudgets = await databaseService.fetch<Budget>(BUDGET_TABLE_NAME, BUDGET_STORAGE_KEY);
+        setBudgets(updatedBudgets.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+    }
   };
 
-  const handleConvertToSale = async () => {
-    if (!companyId || !budgetToProcess) return;
+  const handleConvertToSale = async (budget: Budget) => {
+    if (!companyId) return;
 
     // 1. Atualizar Financeiro
     const newTransaction: Transaction = {
       id: `FIN-${Date.now()}`,
       companyId,
-      description: `Venda ref. Orçamento ${budgetToProcess.id}`,
-      amount: budgetToProcess.finalValue,
+      description: `Venda ref. Orçamento ${budget.id}`,
+      amount: budget.finalValue,
       type: 'INCOME',
       status: 'PAID',
       date: new Date().toISOString(),
@@ -220,7 +229,7 @@ export const Budgets: React.FC = () => {
     await databaseService.insertOne<Transaction>(FINANCE_TABLE_NAME, FINANCE_STORAGE_KEY, newTransaction);
 
     // 2. Baixar Estoque
-    for (const item of budgetToProcess.items) {
+    for (const item of budget.items) {
       const product = products.find(p => p.id === item.productId);
       if (product && product.type === 'PHYSICAL' && product.stock !== undefined) {
         const newStock = product.stock - item.quantity;
@@ -229,14 +238,14 @@ export const Budgets: React.FC = () => {
     }
 
     // 3. Atualizar Status do Orçamento
-    await databaseService.updateOne<Budget>(BUDGET_TABLE_NAME, BUDGET_STORAGE_KEY, budgetToProcess.id, { status: 'CONVERTED' });
+    await databaseService.updateOne<Budget>(BUDGET_TABLE_NAME, BUDGET_STORAGE_KEY, budget.id, { status: 'CONVERTED' });
 
     // 4. Se houver OS vinculada, atualizar ela também (opcional, pode querer fechar a OS)
-    if (budgetToProcess.linkedOsId) {
-         await databaseService.updateOne<ServiceOrder>(OS_TABLE_NAME, OS_STORAGE_KEY, budgetToProcess.linkedOsId, { 
+    if (budget.linkedOsId) {
+         await databaseService.updateOne<ServiceOrder>(OS_TABLE_NAME, OS_STORAGE_KEY, budget.linkedOsId, { 
              status: OSStatus.COMPLETED,
-             price: budgetToProcess.finalValue,
-             defect: `${budgetToProcess.notes || ''}. Itens: ${budgetToProcess.items.map(i => i.name).join(', ')}`
+             price: budget.finalValue,
+             defect: `${budget.notes || ''}. Itens: ${budget.items.map(i => i.name).join(', ')}`
          });
     }
 
@@ -247,41 +256,40 @@ export const Budgets: React.FC = () => {
     const updatedProducts = await databaseService.fetch<Product>(INVENTORY_TABLE_NAME, INVENTORY_STORAGE_KEY);
     setProducts(updatedProducts);
 
-    setBudgetToProcess(null);
     alert('Venda gerada com sucesso! Estoque atualizado e receita lançada.');
   };
 
-  const handleConvertToOS = async () => {
-    if (!companyId || !budgetToProcess) return;
+  const handleConvertToOS = async (budget: Budget) => {
+    if (!companyId) return;
 
-    const itemsDescription = budgetToProcess.items.map(i => `${i.quantity}x ${i.name}`).join(', ');
+    const itemsDescription = budget.items.map(i => `${i.quantity}x ${i.name}`).join(', ');
 
     // Se já existe uma OS vinculada, atualizamos ela para IN_REPAIR (Aprovado)
-    if (budgetToProcess.linkedOsId) {
+    if (budget.linkedOsId) {
         // Busca a OS atual para preservar informações
         const currentOS = await databaseService.fetch<ServiceOrder>(OS_TABLE_NAME, OS_STORAGE_KEY);
-        const targetOS = currentOS.find(o => o.id === budgetToProcess.linkedOsId);
+        const targetOS = currentOS.find(o => o.id === budget.linkedOsId);
         
         const currentDefect = targetOS?.defect || '';
         
-        await databaseService.updateOne<ServiceOrder>(OS_TABLE_NAME, OS_STORAGE_KEY, budgetToProcess.linkedOsId, {
+        await databaseService.updateOne<ServiceOrder>(OS_TABLE_NAME, OS_STORAGE_KEY, budget.linkedOsId, {
             status: OSStatus.IN_REPAIR, // MUDANÇA: Agora vai para Execução (Bancada)
-            price: budgetToProcess.finalValue,
+            price: budget.finalValue,
             defect: `${currentDefect} || APROVADO: ${itemsDescription}`
         });
-        alert(`O Orçamento foi APROVADO! A O.S. #${budgetToProcess.linkedOsId} agora está na Bancada do Técnico.`);
+        alert(`O Orçamento foi APROVADO! A O.S. #${budget.linkedOsId} agora está na Bancada do Técnico.`);
         navigate('/servicos');
     } else {
         // Se não, cria uma nova OS já na Bancada
         const newOS: ServiceOrder = {
             id: `OS-${Date.now().toString().slice(-5)}`,
             companyId,
-            customerId: budgetToProcess.customerId || 'avulso',
-            customerName: budgetToProcess.customerName,
+            customerId: budget.customerId || 'avulso',
+            customerName: budget.customerName,
             device: 'Equipamento do Orçamento',
-            defect: `Itens Aprovados: ${itemsDescription}. ${budgetToProcess.notes || ''}`,
+            defect: `Itens Aprovados: ${itemsDescription}. ${budget.notes || ''}`,
             status: OSStatus.IN_REPAIR, // Já entra em execução
-            price: budgetToProcess.finalValue,
+            price: budget.finalValue,
             date: new Date().toISOString(),
             checklist: { power: 'NOT_TESTED', touch: 'NOT_TESTED', cameras: 'NOT_TESTED', audio: 'NOT_TESTED', wifi: 'NOT_TESTED', charging: 'NOT_TESTED' },
             deviceCondition: 'Vindo de Orçamento Aprovado',
@@ -291,12 +299,10 @@ export const Budgets: React.FC = () => {
         navigate('/servicos');
     }
 
-    await databaseService.updateOne<Budget>(BUDGET_TABLE_NAME, BUDGET_STORAGE_KEY, budgetToProcess.id, { status: 'CONVERTED' });
+    await databaseService.updateOne<Budget>(BUDGET_TABLE_NAME, BUDGET_STORAGE_KEY, budget.id, { status: 'CONVERTED' });
     
     const updatedBudgets = await databaseService.fetch<Budget>(BUDGET_TABLE_NAME, BUDGET_STORAGE_KEY);
     setBudgets(updatedBudgets.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
-
-    setBudgetToProcess(null);
   };
 
   const handleWhatsAppShare = (budget?: Budget) => {
@@ -316,7 +322,6 @@ export const Budgets: React.FC = () => {
     
     const url = `https://wa.me/${phoneToUse.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`;
     
-    // Usa uma janela nomeada para evitar múltiplas abas
     window.open(url, 'MultiplusWhatsApp'); 
 
     setShowPhoneInput(false);
@@ -382,13 +387,9 @@ export const Budgets: React.FC = () => {
                     <div className="flex items-center gap-2">
                        <h3 className="text-sm font-black text-slate-900 uppercase tracking-wide">{budget.id}</h3>
                        <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest ${
-                          budget.status === 'CONVERTED' ? 'bg-emerald-100 text-emerald-700' :
-                          budget.status === 'APPROVED' ? 'bg-blue-100 text-blue-700' :
-                          budget.status === 'REJECTED' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'
+                          BUDGET_STATUS_COLORS[budget.status] || 'bg-slate-100 text-slate-700'
                        }`}>
-                          {budget.status === 'CONVERTED' ? 'Aprovado' : 
-                           budget.status === 'APPROVED' ? 'Aprovado' :
-                           budget.status === 'REJECTED' ? 'Rejeitado' : 'Em Aberto'}
+                          {BUDGET_STATUS_LABELS[budget.status] || budget.status}
                        </span>
                     </div>
                     <p className="text-sm font-bold text-slate-600">{budget.customerName}</p>
@@ -406,13 +407,40 @@ export const Budgets: React.FC = () => {
 
               <div className="flex items-center gap-2">
                  {budget.status === 'OPEN' && (
+                  <>
                     <button 
-                      onClick={() => handleProcessBudget(budget)}
+                      onClick={() => handleUpdateBudgetStatus(budget.id, 'APPROVED')}
                       className="px-4 py-2 bg-emerald-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-emerald-700 transition-all flex items-center gap-2 shadow-lg shadow-emerald-100"
-                      title="Aprovar e Converter"
+                      title="Confirmar Aprovação do Cliente"
                     >
-                       <CheckCircle2 size={14} /> Aprovar
+                      <CheckCircle2 size={14} /> Aprovar
                     </button>
+                    <button 
+                      onClick={() => handleUpdateBudgetStatus(budget.id, 'REJECTED')}
+                      className="px-4 py-2 bg-rose-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-rose-700 transition-all flex items-center gap-2 shadow-lg shadow-rose-100"
+                      title="Marcar como Rejeitado pelo Cliente"
+                    >
+                      <X size={14} /> Rejeitar
+                    </button>
+                  </>
+                 )}
+                 {budget.status === 'APPROVED' && (
+                  <>
+                    <button 
+                      onClick={() => handleConvertToSale(budget)}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-700 transition-all flex items-center gap-2 shadow-lg shadow-blue-100"
+                      title="Converter em Venda"
+                    >
+                      <ShoppingCart size={14} /> Venda
+                    </button>
+                    <button 
+                      onClick={() => handleConvertToOS(budget)}
+                      className="px-4 py-2 bg-indigo-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-indigo-700 transition-all flex items-center gap-2 shadow-lg shadow-indigo-100"
+                      title="Converter em Ordem de Serviço"
+                    >
+                      <Wrench size={14} /> O.S.
+                    </button>
+                  </>
                  )}
                  <button className="p-2 text-slate-400 hover:text-emerald-500 transition-colors" title="Enviar WhatsApp" onClick={() => handleWhatsAppShare(budget)}><Share2 size={18} /></button>
                  <button className="p-2 text-slate-400 hover:text-indigo-600 transition-colors" title="Imprimir" onClick={() => window.print()}><Printer size={18} /></button>
@@ -563,39 +591,6 @@ export const Budgets: React.FC = () => {
              </div>
 
           </div>
-        </div>
-      )}
-
-      {/* MODAL DE PROCESSAMENTO DE ORÇAMENTO (VENDA vs OS) */}
-      {budgetToProcess && (
-        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
-           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => setBudgetToProcess(null)}></div>
-           <div className="relative bg-white w-full max-w-lg rounded-[3.5rem] p-10 shadow-2xl animate-in zoom-in">
-              <div className="text-center mb-10">
-                 <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">Aprovar Orçamento</h2>
-                 <p className="text-sm font-bold text-slate-500 mt-2">Como deseja processar este pedido?</p>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                 <button onClick={handleConvertToSale} className="group p-6 bg-emerald-50 rounded-[2.5rem] border border-emerald-100 hover:border-emerald-300 hover:shadow-xl transition-all text-center flex flex-col items-center gap-4">
-                    <div className="w-16 h-16 bg-white rounded-2xl text-emerald-600 flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform"><ShoppingCart size={32}/></div>
-                    <div>
-                       <h3 className="font-black text-emerald-800 text-sm uppercase tracking-wide">Gerar Venda</h3>
-                       <p className="text-[10px] text-emerald-600 font-medium mt-1 leading-tight">Baixa estoque e lança receita imediata.</p>
-                    </div>
-                 </button>
-
-                 <button onClick={handleConvertToOS} className="group p-6 bg-indigo-50 rounded-[2.5rem] border border-indigo-100 hover:border-indigo-300 hover:shadow-xl transition-all text-center flex flex-col items-center gap-4">
-                    <div className="w-16 h-16 bg-white rounded-2xl text-indigo-600 flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform"><Wrench size={32}/></div>
-                    <div>
-                       <h3 className="font-black text-indigo-800 text-sm uppercase tracking-wide">{budgetToProcess.linkedOsId ? 'Aprovar O.S.' : 'Gerar O.S.'}</h3>
-                       <p className="text-[10px] text-indigo-600 font-medium mt-1 leading-tight">{budgetToProcess.linkedOsId ? 'Aprova e envia O.S. para a bancada.' : 'Cria ordem de serviço técnica.'}</p>
-                    </div>
-                 </button>
-              </div>
-              
-              <button onClick={() => setBudgetToProcess(null)} className="w-full mt-8 py-4 text-slate-400 font-bold uppercase tracking-widest text-[10px] hover:text-slate-600">Cancelar</button>
-           </div>
         </div>
       )}
 

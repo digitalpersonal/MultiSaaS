@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { ShieldCheck, Mail, Lock, LogIn, AlertCircle, Building2, Zap, MessageCircle, Eye, EyeOff, Crown, Ban, Download, Cloud, CloudOff } from 'lucide-react';
 import { UserRole, CompanyStatus, User as UserType, Company } from '../types';
@@ -48,12 +49,9 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
     setError(null);
     setIsLoading(true);
 
-    // Normalização: Remove espaços do começo/fim e coloca email em minúsculo
     const normalizedEmail = email.trim().toLowerCase();
-    // Normalização: Remove espaços da senha (comum em copy-paste no celular)
     const normalizedPassword = password.trim();
 
-    // Pequeno delay para feedback visual
     setTimeout(async () => { 
       // 1. MASTER ADMIN (Hardcoded para recuperação/emergência)
       if (normalizedEmail === 'digitalpersonal@gmail.com' && normalizedPassword === 'Mld3602#?+') {
@@ -73,34 +71,24 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
         const savedAccounts = await databaseService.fetch<UserType>('accounts', 'multiplus_accounts');
         const tenants = await databaseService.fetch<Company>('tenants', 'multiplus_tenants');
         
-        // Diagnóstico preciso
         const userExists = savedAccounts.find((acc: UserType) => 
           acc.email.trim().toLowerCase() === normalizedEmail
         );
 
-        if (userExists) {
-           // Verifica a senha (comparando ambas sem espaços extras)
-           if (userExists.password.trim() === normalizedPassword) {
-              const company = tenants.find((t: Company) => t.id === userExists.companyId);
-              
-              if (company && company.status === CompanyStatus.SUSPENDED) {
-                setError('ACESSO BLOQUEADO. A UNIDADE ESTÁ SUSPENSA.');
-              } else {
-                onLogin(userExists);
-              }
-           } else {
-              setError('SENHA INCORRETA. Tente digitar novamente.');
-           }
+        if (userExists && userExists.password.trim() === normalizedPassword) {
+            const company = tenants.find((t: Company) => t.id === userExists.companyId);
+            
+            if (company && company.status === CompanyStatus.SUSPENDED) {
+              setError('ACESSO BLOQUEADO. A UNIDADE ESTÁ SUSPENSA.');
+            } else {
+              onLogin(userExists);
+            }
         } else {
-           if (savedAccounts.length === 0 && cloudStatus) {
-              setError('ERRO CRÍTICO: Banco de dados vazio. Contate o suporte.');
-           } else {
-              setError('E-MAIL NÃO ENCONTRADO. Verifique o cadastro.');
-           }
+            setError('E-mail ou senha inválidos. Verifique seus dados.');
         }
       } catch (err) {
         console.error("Erro ao buscar dados de login:", err);
-        setError('ERRO DE CONEXÃO. Verifique sua internet.');
+        setError('ERRO DE CONEXÃO. Verifique sua internet e tente novamente.');
       }
       setIsLoading(false);
     }, 1000);
@@ -110,29 +98,20 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
     window.open('https://wa.me/5535991048020?text=Olá Silvio! Gostaria de falar sobre o sistema Multiplus.', '_blank');
   };
 
-  const handleCloudStatusClick = () => {
-    if (!cloudStatus) {
-      alert("⚠️ MODO LOCAL ATIVO\n\nO sistema não detectou as chaves de conexão com o Supabase.\n\nPara ativar o Modo Nuvem (Multi-dispositivo), verifique se as variáveis SUPABASE_URL e SUPABASE_ANON_KEY estão configuradas corretamente no seu arquivo .env ou no painel da hospedagem.");
-    } else {
-      alert("✅ MODO NUVEM ATIVO\n\nConexão com Supabase estabelecida.\nSeus dados estão sendo sincronizados e acessíveis de qualquer lugar.");
-    }
-  };
-
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-indigo-100 via-slate-50 to-white relative">
       
-      {/* Indicador de Status do Servidor (Clicável para Diagnóstico) */}
-      <button 
-        onClick={handleCloudStatusClick}
-        className={`absolute top-6 right-6 flex items-center gap-2 px-4 py-2 backdrop-blur-md rounded-full shadow-sm border transition-all ${cloudStatus ? 'bg-emerald-50/50 border-emerald-200 hover:bg-emerald-100' : 'bg-white/50 border-slate-200 hover:bg-slate-100'}`}
-        title={cloudStatus ? "Conectado à Nuvem (Clique para detalhes)" : "Modo Local (Clique para diagnosticar)"}
+      {/* Indicador de Status do Servidor (Visual) */}
+      <div 
+        className={`absolute top-6 right-6 flex items-center gap-2 px-4 py-2 backdrop-blur-md rounded-full shadow-sm border ${cloudStatus ? 'bg-emerald-50/50 border-emerald-200' : 'bg-white/50 border-slate-200'}`}
+        title={cloudStatus ? "Conectado à Nuvem (Online)" : "Erro de Conexão (Offline)"}
       >
          {cloudStatus ? (
             <><div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div><Cloud size={14} className="text-emerald-600"/><span className="text-[10px] font-bold text-emerald-700 uppercase">Cloud On</span></>
          ) : (
-            <><div className="w-2 h-2 rounded-full bg-slate-400"></div><CloudOff size={14} className="text-slate-400"/><span className="text-[10px] font-bold text-slate-400 uppercase">Local Mode</span></>
+            <><div className="w-2 h-2 rounded-full bg-rose-500"></div><CloudOff size={14} className="text-rose-500"/><span className="text-[10px] font-bold text-rose-600 uppercase">Cloud Off</span></>
          )}
-      </button>
+      </div>
 
       <div className="w-full max-w-md">
         <div className="text-center mb-10">
