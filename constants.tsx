@@ -10,37 +10,40 @@ import {
   BarChart3, 
   Settings,
   ShieldCheck,
-  FileText
+  FileText,
+  UserRound,
+  HelpCircle
 } from 'lucide-react';
 
 export const NAV_ITEMS = [
   { id: 'dashboard', label: 'Painel Geral', icon: <LayoutDashboard size={20} />, path: '/' },
-  { id: 'sales', label: 'Frente de Caixa (PDV)', icon: <ShoppingCart size={20} />, path: '/vendas' },
-  { id: 'budgets', label: 'Orçamentos', icon: <FileText size={20} />, path: '/orcamentos' },
+  { id: 'sales', label: 'Vendas (PDV)', icon: <ShoppingCart size={20} />, path: '/vendas' },
   { id: 'services', label: 'Ordens de Serviço', icon: <Wrench size={20} />, path: '/servicos' },
-  { id: 'inventory', label: 'Estoque de Produtos', icon: <Package size={20} />, path: '/estoque' },
-  { id: 'finance', label: 'Gestão Financeira', icon: <DollarSign size={20} />, path: '/financeiro' },
-  { id: 'customers', label: 'Cadastro de Clientes', icon: <Users size={20} />, path: '/clientes' },
-  { id: 'reports', label: 'Relatórios Gerenciais', icon: <BarChart3 size={20} />, path: '/relatorios' },
+  { id: 'budgets', label: 'Orçamentos', icon: <FileText size={20} />, path: '/orcamentos' },
+  { id: 'inventory', label: 'Estoque & Catálogo', icon: <Package size={20} />, path: '/estoque' },
+  { id: 'finance', label: 'Financeiro & Contábil', icon: <DollarSign size={20} />, path: '/financeiro' },
+  { id: 'customers', label: 'Clientes (CRM)', icon: <Users size={20} />, path: '/clientes' },
+  { id: 'team', label: 'Equipe & RH', icon: <UserRound size={20} />, path: '/equipe' },
+  { id: 'reports', label: 'Relatórios', icon: <BarChart3 size={20} />, path: '/relatorios' },
+  { id: 'help', label: 'Ajuda & Guia ERP', icon: <HelpCircle size={20} />, path: '/ajuda' },
   { id: 'settings', label: 'Configurações', icon: <Settings size={20} />, path: '/configuracoes' },
 ];
 
 export const SUPER_ADMIN_NAV_ITEM = { 
   id: 'super-admin', 
-  label: 'Gestão SaaS (Dono)', 
+  label: 'Gestão SaaS', 
   icon: <ShieldCheck size={20} />, 
   path: '/super-admin' 
 };
 
 export const STATUS_LABELS: Record<string, string> = {
-  ALL: 'Todos os Status',
   AWAITING: 'Aguardando',
-  IN_ANALYSIS: 'Em Análise (Entrada)',
-  BUDGET_PENDING: 'Aguardando Aprovação',
-  WAITING_PARTS: 'Aguardando Peças',
+  IN_ANALYSIS: 'Entrada/Triagem',
+  BUDGET_PENDING: 'Orçamento Enviado',
+  WAITING_PARTS: 'Peças Solicitadas',
   IN_REPAIR: 'Em Manutenção',
-  COMPLETED: 'Pronto / Entregue',
-  CANCELLED: 'Cancelado / Recusado',
+  COMPLETED: 'Pronto/Entregue',
+  CANCELLED: 'Cancelado',
 };
 
 export const STATUS_COLORS: Record<string, string> = {
@@ -55,9 +58,9 @@ export const STATUS_COLORS: Record<string, string> = {
 
 export const BUDGET_STATUS_LABELS: Record<string, string> = {
   OPEN: 'Em Aberto',
-  APPROVED: 'Aprovado pelo Cliente',
-  REJECTED: 'Rejeitado pelo Cliente',
-  CONVERTED: 'Processado (Venda/OS)',
+  APPROVED: 'Aprovado',
+  REJECTED: 'Rejeitado',
+  CONVERTED: 'Convertido',
 };
 
 export const BUDGET_STATUS_COLORS: Record<string, string> = {

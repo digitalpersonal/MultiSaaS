@@ -18,6 +18,9 @@ export interface Company {
   name: string;
   legalName?: string;
   taxId?: string; // CNPJ/CPF
+  stateRegistration?: string;
+  municipalRegistration?: string;
+  fiscalRegime?: 'SIMPLES_NACIONAL' | 'LUCRO_PRESUMIDO' | 'LUCRO_REAL';
   logo?: string;
   plan: 'FREE' | 'PRO' | 'ENTERPRISE';
   status: CompanyStatus;
@@ -27,11 +30,11 @@ export interface Company {
   profileCompleted: boolean;
   pixType?: 'CPF' | 'CNPJ' | 'EMAIL' | 'PHONE' | 'RANDOM';
   pixKey?: string;
-  creditCardFee?: number; // Taxa Cartão de Crédito %
-  debitCardFee?: number;  // Taxa Cartão de Débito %
-  adminEmail?: string; // Temporário para SuperAdmin mockado
+  creditCardFee?: number; 
+  debitCardFee?: number;  
+  adminEmail?: string; 
   address?: string; 
-  phone?: string; // WhatsApp / Telefone de Contato
+  phone?: string; 
 }
 
 export interface User {
@@ -39,87 +42,98 @@ export interface User {
   companyId: string;
   name: string;
   email: string;
+  phone?: string;
+  document?: string; // CPF
   role: UserRole;
-  password?: string; // Apenas para simulação mock
+  password?: string;
+  active: boolean;
+  createdAt: string;
 }
 
 export enum OSStatus {
-  AWAITING = 'AWAITING', // Aguardando Triagem
-  IN_ANALYSIS = 'IN_ANALYSIS', // Em Triagem/Análise (Entrada)
-  BUDGET_PENDING = 'BUDGET_PENDING', // Orçamento Feito (Aguardando Cliente)
-  WAITING_PARTS = 'WAITING_PARTS', // Aprovado (Aguardando Peças)
-  IN_REPAIR = 'IN_REPAIR', // Aprovado (Em Manutenção)
-  COMPLETED = 'COMPLETED', // Pronto/Entregue
-  CANCELLED = 'CANCELLED' // Recusado/Cancelado
+  AWAITING = 'AWAITING',
+  IN_ANALYSIS = 'IN_ANALYSIS',
+  BUDGET_PENDING = 'BUDGET_PENDING',
+  WAITING_PARTS = 'WAITING_PARTS',
+  IN_REPAIR = 'IN_REPAIR',
+  COMPLETED = 'COMPLETED',
+  CANCELLED = 'CANCELLED'
 }
 
 export interface OSChecklist {
   power: 'YES' | 'NO' | 'NOT_TESTED';
-  touch: 'YES' | 'NO' | 'NOT_TESTED';
-  cameras: 'YES' | 'NO' | 'NOT_TESTED';
-  audio: 'YES' | 'NO' | 'NOT_TESTED';
-  wifi: 'YES' | 'NO' | 'NOT_TESTED';
-  charging: 'YES' | 'NO' | 'NOT_TESTED';
+  functionality: 'YES' | 'NO' | 'NOT_TESTED';
+  physicalState: 'YES' | 'NO' | 'NOT_TESTED';
+  safety: 'YES' | 'NO' | 'NOT_TESTED';
+  cleaning: 'YES' | 'NO' | 'NOT_TESTED';
+  accessories: 'YES' | 'NO' | 'NOT_TESTED';
 }
 
 export interface ServiceOrder {
   id: string;
-  companyId: string; // Adicionado para multi-tenancy
+  companyId: string; 
   customerId: string;
   customerName: string;
   phone?: string;
-  device: string;
-  imei?: string; // Novo
-  devicePassword?: string; // Novo
-  accessories?: string; // Novo: Acessórios deixados (Capa, Carregador, etc)
+  equipment: string; 
+  category?: string;
+  serialNumber?: string; 
+  accessCode?: string; 
+  accessories?: string; 
   defect: string;
   status: OSStatus;
   price: number;
   discount?: number;
   observations?: string;
-  deviceCondition?: string;
+  itemCondition?: string; 
   date: string;
   technicianId?: string;
   technicianName?: string;
+  openedById?: string; // Rastreabilidade
   checklist?: OSChecklist;
-}
-
-export interface ProductVariation {
-  id: string;
-  name: string;
-  sku: string;
-  stock: number;
 }
 
 export interface Product {
   id: string;
-  companyId: string; // Adicionado para multi-tenancy
+  companyId: string; 
   name: string;
   category: string;
-  sku?: string;
+  sku: string;
   stock?: number;
   minStock?: number;
   costPrice: number;
   salePrice: number;
-  type: 'PHYSICAL' | 'DIGITAL' | 'PERSONALIZED' | 'SERVICE';
+  type: 'PHYSICAL' | 'SERVICE';
   active: boolean;
-  observations?: string;
-  hasVariations: boolean;
-  variations?: ProductVariation[];
-  estimatedDuration?: string;
 }
 
 export interface Customer {
   id: string;
-  companyId: string; // Adicionado para multi-tenancy
+  companyId: string; 
   name: string;
-  taxId: string;
+  taxId: string; // CPF/CNPJ
   email: string;
   phone: string;
   type: 'INDIVIDUAL' | 'BUSINESS';
-  status?: string; // Adicionado para mock do SuperAdmin
+  // Added status field to fix error in pages/Customers.tsx
+  status?: string;
 }
 
+export interface Transaction {
+  id: string;
+  companyId: string; 
+  type: 'INCOME' | 'EXPENSE';
+  description: string;
+  amount: number;
+  date: string;
+  paymentDate?: string;
+  status: 'PAID' | 'PENDING';
+  category?: string;
+  method?: string;
+  userId?: string; // Quem gerou o lançamento
+}
+
+// Added FinanceCategory interface to fix error in pages/Finance.tsx
 export interface FinanceCategory {
   id: string;
   companyId: string;
@@ -127,26 +141,7 @@ export interface FinanceCategory {
   type: 'INCOME' | 'EXPENSE';
 }
 
-export interface Transaction {
-  id: string;
-  companyId: string; // Adicionado para multi-tenancy
-  type: 'INCOME' | 'EXPENSE';
-  description: string;
-  amount: number;
-  date: string;
-  status: 'PAID' | 'PENDING' | 'OVERDUE';
-  category?: string;
-  account?: string;
-  method?: string;
-  notes?: string;
-  desc?: string; // Adicionado para mock do Finance
-  installment?: {
-    parentId: string;
-    current: number;
-    total: number;
-  };
-}
-
+// Added BudgetItem interface to fix error in pages/Budgets.tsx
 export interface BudgetItem {
   productId: string;
   name: string;
@@ -158,15 +153,21 @@ export interface BudgetItem {
 export interface Budget {
   id: string;
   companyId: string;
+  // Added customerId field to fix error in pages/Budgets.tsx
   customerId?: string;
   customerName: string;
+  // Updated items type to BudgetItem[] to fix error in pages/Budgets.tsx
   items: BudgetItem[];
   totalValue: number;
-  discount: number;
+  // Added discount field to fix error in pages/Budgets.tsx
+  discount?: number;
+  // Added finalValue field to fix error in pages/Budgets.tsx
   finalValue: number;
   status: 'OPEN' | 'APPROVED' | 'REJECTED' | 'CONVERTED';
   createdAt: string;
-  validUntil: string;
+  // Added validUntil field to fix error in pages/Budgets.tsx
+  validUntil?: string;
+  // Added notes field to fix error in pages/Budgets.tsx
   notes?: string;
-  linkedOsId?: string; // Novo: Link para atualizar a OS original
+  linkedOsId?: string; 
 }

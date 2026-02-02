@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { 
   Building2, 
@@ -81,13 +82,16 @@ export const SuperAdmin: React.FC = () => {
       adminEmail: safeEmail 
     };
 
+    // Added active: true and createdAt properties to fix UserType mismatch
     const newUser: UserType = {
       id: `user_${Math.random().toString(36).substr(2, 9)}`,
       companyId: tenantId,
       name: `Empresário ${companyName}`,
       email: safeEmail,
       password: adminPassword,
-      role: UserRole.COMPANY_ADMIN
+      role: UserRole.COMPANY_ADMIN,
+      active: true,
+      createdAt: new Date().toISOString()
     };
 
     await databaseService.insertOne<CompanyType>(TENANTS_TABLE_NAME, TENANTS_STORAGE_KEY, newCompany);
